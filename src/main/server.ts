@@ -1,17 +1,13 @@
 import "dotenv/config";
-import express, { ErrorRequestHandler } from "express";
-import cors from "cors";
+import express from "express";
 import http from "node:http";
-import path from "node:path";
 import { Server } from "socket.io";
-import { ZodError } from "zod";
-import { AppError } from "../core/domain/errors";
 import { SocketAuctionNotifier } from "../adapters/in/websocket/SocketAuctionNotifier";
-import { buildRouter } from "../adapters/in/http/routes";
 import { SettleExpiredLots } from "../application/use-cases/auction/SettleExpiredLots";
 import { prisma } from "../adapters/out/database/prisma/client";
 import { JwtTokenService } from "../adapters/out/crypto/JwtTokenService";
 import { PrismaSettlementRepository } from "../adapters/out/database/prisma/PrismaSettlementRepository";
+import { configureApp } from "./configureApp";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL não foi configurada.");
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error("Configure JWT_SECRET com pelo menos 32 caracteres.");
@@ -23,11 +19,7 @@ const notifier = new SocketAuctionNotifier(io);
 const tokens = new JwtTokenService();
 const settlementUseCase = new SettleExpiredLots(new PrismaSettlementRepository(), notifier);
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173" }));
-app.use(express.json({ limit: "32kb" }));
-app.use("/uploads", express.static(path.resolve(process.env.UPLOADS_DIR ?? "./uploads"), { fallthrough: false, maxAge: "1d" }));
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
-app.use("/api", buildRouter(notifier));
+configureApp(app, notifier);
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
   if (typeof token !== "string") return next();
@@ -45,17 +37,6 @@ io.on("connection", (socket) => {
     if (typeof lotId === "string" && /^[0-9a-f-]{36}$/i.test(lotId)) void socket.leave(`lot:${lotId}`);
   });
 });
-
-const errors: ErrorRequestHandler = (error, _req, res, _next) => {
-  if (error instanceof ZodError) return res.status(422).json({ error: "Dados inválidos.", details: error.flatten().fieldErrors });
-  if (error instanceof AppError) return res.status(error.statusCode).json({ error: error.message });
-  if (typeof error === "object" && error !== null && "status" in error && error.status === 404) {
-    return res.status(404).json({ error: "Recurso não encontrado." });
-  }
-  console.error(error);
-  return res.status(500).json({ error: "Erro interno do servidor." });
-};
-app.use(errors);
 
 const settlementTimer = setInterval(() => {
   void settlementUseCase.execute().catch((error: unknown) => console.error("Falha na liquidação de lotes:", error));

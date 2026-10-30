@@ -1,0 +1,342 @@
+import express, { type Express } from "express";
+import bcrypt from "bcryptjs";
+import request from "supertest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { JwtTokenService } from "../../adapters/out/crypto/JwtTokenService";
+import type { IAuctionNotifier } from "../../core/ports/services";
+import { configureApp } from "../../main/configureApp";
+
+const routeMocks = vi.hoisted(() => ({
+  createContainer: vi.fn(),
+  listLotsExecute: vi.fn(),
+  searchPokemonExecute: vi.fn(),
+  createLotExecute: vi.fn(),
+  cancelLotExecute: vi.fn(),
+  placeBidExecute: vi.fn(),
+  getWalletExecute: vi.fn(),
+  depositBalanceExecute: vi.fn(),
+  auditExecute: vi.fn(),
+  bidderReportExecute: vi.fn(),
+  userFindUnique: vi.fn(),
+  userCreate: vi.fn(),
+  lotFindUnique: vi.fn(),
+  lotFindMany: vi.fn()
+}));
+
+vi.mock("../../main/container", () => ({
+  createContainer: routeMocks.createContainer
+}));
+
+vi.mock("../../adapters/out/database/prisma/client", () => ({
+  prisma: {
+    user: {
+      findUnique: routeMocks.userFindUnique,
+      create: routeMocks.userCreate
+    },
+    lot: {
+      findUnique: routeMocks.lotFindUnique,
+      findMany: routeMocks.lotFindMany
+    }
+  }
+}));
+
+const routeUseCases = {
+  listLots: { execute: routeMocks.listLotsExecute },
+  searchPokemon: { execute: routeMocks.searchPokemonExecute },
+  createLot: { execute: routeMocks.createLotExecute },
+  cancelLot: { execute: routeMocks.cancelLotExecute },
+  placeBid: { execute: routeMocks.placeBidExecute },
+  getWallet: { execute: routeMocks.getWalletExecute },
+  depositBalance: { execute: routeMocks.depositBalanceExecute },
+  audit: { execute: routeMocks.auditExecute },
+  bidderReport: { execute: routeMocks.bidderReportExecute }
+};
+
+const notifier: IAuctionNotifier = {
+  bidPlaced: () => undefined,
+  lotUpdated: () => undefined,
+  walletUpdated: () => undefined
+};
+
+describe("HTTP routes integration", () => {
+  let app: Express;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    process.env.JWT_SECRET = "integration-test-secret-with-at-least-thirty-two-characters";
+    routeMocks.createContainer.mockReturnValue(routeUseCases);
+    app = express();
+    configureApp(app, notifier);
+  });
+
+  it("returns a healthy response", async () => {
+    const response = await request(app).get("/health");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: "ok" });
+  });
+
+  it("lists open lots through the public route", async () => {
+    const lots = [{ id: "lot-1", title: "Pikachu" }];
+    routeMocks.listLotsExecute.mockResolvedValue(lots);
+
+    const response = await request(app).get("/api/lots");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(lots);
+    expect(routeMocks.listLotsExecute).toHaveBeenCalledWith("OPEN");
+  });
+
+  it("validates and normalizes Pokémon search input", async () => {
+    routeMocks.searchPokemonExecute.mockResolvedValue([{ id: 25, name: "pikachu" }]);
+
+    const response = await request(app).get("/api/pokemon/search?q=%20Pikachu%20");
+
+    expect(response.status).toBe(200);
+    expect(routeMocks.searchPokemonExecute).toHaveBeenCalledWith("Pikachu");
+  });
+
+  it("rejects protected routes when no authentication token is provided", async () => {
+    const response = await request(app)
+      .post("/api/wallet/deposits")
+      .send({ amount: 1000 });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Autenticação necessária.");
+    expect(routeMocks.depositBalanceExecute).not.toHaveBeenCalled();
+  });
+
+  it("rejects users with the wrong role", async () => {
+    const token = new JwtTokenService().sign({ sub: "seller-1", role: "AUCTIONEER" });
+
+    const response = await request(app)
+      .get("/api/wallet")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe("Não tem permissão para esta operação.");
+    expect(routeMocks.getWalletExecute).not.toHaveBeenCalled();
+  });
+
+  it("deposits funds for an authenticated bidder", async () => {
+    const token = new JwtTokenService().sign({ sub: "bidder-1", role: "BIDDER" });
+    const wallet = { balance: 5000, committed: 0, available: 5000 };
+    routeMocks.depositBalanceExecute.mockResolvedValue(wallet);
+
+    const response = await request(app)
+      .post("/api/wallet/deposits")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ amount: 5000 });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual(wallet);
+    expect(routeMocks.depositBalanceExecute).toHaveBeenCalledWith("bidder-1", 5000);
+  });
+
+  it("returns validation details when a deposit is outside the allowed range", async () => {
+    const token = new JwtTokenService().sign({ sub: "bidder-1", role: "BIDDER" });
+
+    const response = await request(app)
+      .post("/api/wallet/deposits")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ amount: 99 });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error).toBe("Dados inválidos.");
+    expect(response.body.details).toHaveProperty("amount");
+    expect(routeMocks.depositBalanceExecute).not.toHaveBeenCalled();
+  });
+
+  it("returns not found when a requested lot does not exist", async () => {
+    routeMocks.lotFindUnique.mockResolvedValue(null);
+
+    const response = await request(app).get("/api/lots/missing-lot");
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe("Lote não encontrado.");
+  });
+
+  it("registers bidders with a wallet and a normalized email", async () => {
+    routeMocks.userFindUnique.mockResolvedValue(null);
+    routeMocks.userCreate.mockResolvedValue({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
+
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({ name: "Bruno", email: "BRUNO@example.com", password: "password123", role: "BIDDER" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.user).toEqual({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
+    expect(response.body.token).toEqual(expect.any(String));
+    expect(routeMocks.userFindUnique).toHaveBeenCalledWith({ where: { email: "bruno@example.com" } });
+    const createdUser = routeMocks.userCreate.mock.calls[0][0];
+    expect(createdUser.data.wallet).toEqual({ create: {} });
+    expect(await bcrypt.compare("password123", createdUser.data.passwordHash)).toBe(true);
+  });
+
+  it("rejects duplicate registration and invalid registration data", async () => {
+    routeMocks.userFindUnique.mockResolvedValue({ id: "existing-user" });
+
+    const duplicateResponse = await request(app)
+      .post("/api/auth/register")
+      .send({ name: "Bruno", email: "bruno@example.com", password: "password123", role: "BIDDER" });
+    const invalidResponse = await request(app)
+      .post("/api/auth/register")
+      .send({ name: "B", email: "invalid", password: "short", role: "BIDDER" });
+
+    expect(duplicateResponse.status).toBe(409);
+    expect(invalidResponse.status).toBe(422);
+    expect(routeMocks.userCreate).not.toHaveBeenCalled();
+  });
+
+  it("authenticates a user and rejects invalid credentials", async () => {
+    const passwordHash = await bcrypt.hash("password123", 4);
+    routeMocks.userFindUnique.mockResolvedValue({
+      id: "bidder-1", name: "Bruno", role: "BIDDER", passwordHash
+    });
+
+    const successResponse = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "BRUNO@example.com", password: "password123" });
+    const invalidResponse = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "bruno@example.com", password: "wrong-password" });
+
+    expect(successResponse.status).toBe(200);
+    expect(successResponse.body.user).toEqual({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
+    expect(successResponse.body.token).toEqual(expect.any(String));
+    expect(invalidResponse.status).toBe(401);
+  });
+
+  it("lists all lots when requested and rejects an invalid Pokémon search", async () => {
+    routeMocks.listLotsExecute.mockResolvedValue([]);
+
+    const lotsResponse = await request(app).get("/api/lots?status=all");
+    const searchResponse = await request(app).get("/api/pokemon/search?q=%20%20");
+
+    expect(lotsResponse.status).toBe(200);
+    expect(routeMocks.listLotsExecute).toHaveBeenCalledWith(undefined);
+    expect(searchResponse.status).toBe(422);
+    expect(routeMocks.searchPokemonExecute).not.toHaveBeenCalled();
+  });
+
+  it("returns lot details with masked bidder identifiers", async () => {
+    routeMocks.lotFindUnique.mockResolvedValue({
+      id: "lot-1", pokemonId: 25, title: "Pikachu", imagePath: "/uploads/pikachu.png",
+      types: ["electric"], height: 4, weight: 60, stats: [], startingBid: 1000,
+      minimumIncrement: 100, currentBid: 1100, endsAt: "2030-01-01T00:00:00.000Z",
+      status: "CLOSED", settledAt: "2030-01-01T00:00:00.000Z", winnerId: "1234-5678",
+      seller: { name: "Seller" }, bids: [{ bidderId: "abcd-5678" }]
+    });
+
+    const response = await request(app).get("/api/lots/lot-1");
+
+    expect(response.status).toBe(200);
+    expect(response.body.winner).toBe("Licitante #1234");
+    expect(response.body.latestBidder).toBe("Licitante #ABCD");
+  });
+
+  it("creates and cancels lots for an authenticated auctioneer", async () => {
+    const token = new JwtTokenService().sign({ sub: "seller-1", role: "AUCTIONEER" });
+    const createdLot = { id: "lot-1", status: "OPEN" };
+    routeMocks.createLotExecute.mockResolvedValue(createdLot);
+    routeMocks.cancelLotExecute.mockResolvedValue({ id: "lot-1", status: "CANCELLED" });
+
+    const createResponse = await request(app)
+      .post("/api/lots")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pokemon: "Pikachu", startingBid: 1000, minimumIncrement: 100, durationMinutes: 60 });
+    const cancelResponse = await request(app)
+      .delete("/api/lots/lot-1")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(createResponse.status).toBe(201);
+    expect(routeMocks.createLotExecute).toHaveBeenCalledWith({
+      pokemon: "Pikachu", startingBid: 1000, minimumIncrement: 100, durationMinutes: 60, sellerId: "seller-1"
+    });
+    expect(cancelResponse.status).toBe(200);
+    expect(routeMocks.cancelLotExecute).toHaveBeenCalledWith("lot-1", "seller-1");
+  });
+
+  it("returns seller reports with masked winners and auctioned-lot summaries", async () => {
+    const token = new JwtTokenService().sign({ sub: "seller-1", role: "AUCTIONEER" });
+    routeMocks.lotFindMany
+      .mockResolvedValueOnce([{
+        id: "lot-1", title: "Pikachu", settledAt: "2030-01-01T00:00:00.000Z",
+        winnerId: "1234-5678", bids: [{ amount: 1500 }]
+      }])
+      .mockResolvedValueOnce([{
+        id: "lot-1", pokemonId: 25, title: "Pikachu", imagePath: "/uploads/pikachu.png",
+        currentBid: 1500, settledAt: "2030-01-01T00:00:00.000Z", _count: { bids: 3 }
+      }]);
+
+    const reportResponse = await request(app)
+      .get("/api/seller/reports")
+      .set("Authorization", `Bearer ${token}`);
+    const lotsResponse = await request(app)
+      .get("/api/seller/auctioned-lots")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(reportResponse.status).toBe(200);
+    expect(reportResponse.body.totalReceived).toBe(1500);
+    expect(reportResponse.body.lots[0].winner).toBe("Licitante #1234");
+    expect(lotsResponse.status).toBe(200);
+    expect(lotsResponse.body[0]).toMatchObject({ amount: 1500, bidCount: 3 });
+  });
+
+  it("places bids and returns the bidder wallet and report", async () => {
+    const token = new JwtTokenService().sign({ sub: "bidder-1", role: "BIDDER" });
+    routeMocks.placeBidExecute.mockResolvedValue({
+      bid: { id: "bid-1", amount: 1100, createdAt: "2030-01-01T00:00:00.000Z", hash: "hash" },
+      lot: { id: "lot-1", currentBid: 1100, endsAt: "2030-01-01T00:02:00.000Z" }
+    });
+    routeMocks.getWalletExecute.mockResolvedValue({ balance: 5000, committed: 1100, available: 3900 });
+    routeMocks.bidderReportExecute.mockResolvedValue({ bids: [], totalSpent: 0 });
+
+    const bidResponse = await request(app)
+      .post("/api/lots/lot-1/bids")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ amount: 1100 });
+    const walletResponse = await request(app).get("/api/wallet").set("Authorization", `Bearer ${token}`);
+    const reportResponse = await request(app).get("/api/bidder/report").set("Authorization", `Bearer ${token}`);
+
+    expect(bidResponse.status).toBe(201);
+    expect(routeMocks.placeBidExecute).toHaveBeenCalledWith("lot-1", "bidder-1", 1100);
+    expect(walletResponse.body).toEqual({ balance: 5000, committed: 1100, available: 3900 });
+    expect(reportResponse.body).toEqual({ bids: [], totalSpent: 0 });
+  });
+
+  it("returns public audit history", async () => {
+    const audit = { valid: true, bids: [] };
+    routeMocks.auditExecute.mockResolvedValue(audit);
+
+    const response = await request(app).get("/api/lots/lot-1/audit");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(audit);
+    expect(routeMocks.auditExecute).toHaveBeenCalledWith("lot-1");
+  });
+
+  it("returns a settled receipt with winner status and rejects unsettled lots", async () => {
+    const token = new JwtTokenService().sign({ sub: "winner-1", role: "BIDDER" });
+    routeMocks.lotFindUnique
+      .mockResolvedValueOnce({
+        id: "lot-1", title: "Pikachu", imagePath: "/uploads/pikachu.png", status: "CLOSED",
+        settledAt: "2030-01-01T00:00:00.000Z", winnerId: "winner-1", bids: [{ amount: 1500 }]
+      })
+      .mockResolvedValueOnce({
+        id: "lot-2", title: "Eevee", imagePath: "/uploads/eevee.png", status: "OPEN",
+        settledAt: null, winnerId: null, bids: []
+      });
+
+    const receiptResponse = await request(app)
+      .get("/api/receipts/lot-1")
+      .set("Authorization", `Bearer ${token}`);
+    const unsettledResponse = await request(app).get("/api/receipts/lot-2");
+
+    expect(receiptResponse.status).toBe(200);
+    expect(receiptResponse.body).toMatchObject({
+      winner: "Licitante #WINN", isCurrentUserWinner: true, amount: 1500
+    });
+    expect(unsettledResponse.status).toBe(409);
+  });
+});

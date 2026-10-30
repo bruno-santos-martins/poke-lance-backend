@@ -12,7 +12,9 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "start:prod": "node dist/src/main/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:unit": "vitest run src/test/unit",
+    "test:integration": "vitest run src/test/integration"
   },
   "dependencies": {
     "@prisma/client": "^6.8.2",
