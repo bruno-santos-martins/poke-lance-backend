@@ -57,6 +57,20 @@ export class PlaceBidUseCase {
         description: `Lance comprometido em ${lot.title}`,
         createdAt
       });
+      await tx.recordAudit({
+        actorId: bidderId,
+        actorRole: "BIDDER",
+        action: "BID_PLACED",
+        entityType: "LOT",
+        entityId: lotId,
+        lotId,
+        details: {
+          title: lot.title,
+          amount,
+          releasedBidderId: latestBid?.bidderId ?? null,
+          releasedAmount: latestBid?.amount ?? 0
+        }
+      });
 
       const endsAt = isAntiSnipingWindow(lot.endsAt, createdAt)
         ? new Date(lot.endsAt.getTime() + 120_000)

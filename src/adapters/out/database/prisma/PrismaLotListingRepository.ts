@@ -37,6 +37,7 @@ export class PrismaLotListingRepository implements ILotListingRepository {
     });
     return lots.map((lot) => ({
       id: lot.id,
+      sellerId: lot.sellerId,
       pokemonId: lot.pokemonId,
       title: lot.title,
       imagePath: lot.imagePath,

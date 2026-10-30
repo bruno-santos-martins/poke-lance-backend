@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Bid, Lot, Wallet } from "../../../core/domain/entities";
 import { IAuctionNotifier, IHashService } from "../../../core/ports/services";
-import { IBidTransactionRepository, IAuctionTransaction, LotBidUpdate, NewBid, NewWalletTransaction, WalletAdjustment } from "../../../core/ports/repositories";
+import { IBidTransactionRepository, IAuctionTransaction, LotBidUpdate, NewAuditEvent, NewBid, NewWalletTransaction, WalletAdjustment } from "../../../core/ports/repositories";
 import { PlaceBidUseCase } from "../../../application/use-cases/bid/PlaceBidUseCase";
 
 class MemoryAuctionRepository implements IBidTransactionRepository, IAuctionTransaction {
@@ -10,6 +10,7 @@ class MemoryAuctionRepository implements IBidTransactionRepository, IAuctionTran
   wallets = new Map<string, Wallet>();
   bids: Bid[] = [];
   transactions: NewWalletTransaction[] = [];
+  auditEvents: NewAuditEvent[] = [];
   lockedLots: string[] = [];
   lockedWalletGroups: string[][] = [];
 
@@ -44,6 +45,10 @@ class MemoryAuctionRepository implements IBidTransactionRepository, IAuctionTran
 
   async recordWalletTransaction(transaction: NewWalletTransaction): Promise<void> {
     this.transactions.push(transaction);
+  }
+
+  async recordAudit(event: NewAuditEvent): Promise<void> {
+    this.auditEvents.push(event);
   }
 
   async addBid(bid: NewBid): Promise<Bid> {
@@ -99,6 +104,12 @@ describe("PlaceBidUseCase", () => {
     expect(result.lot.endsAt.getTime()).toBe(lot.endsAt.getTime() + 120_000);
     expect(notifier.wallets.get("bidder-old")?.available).toBe(10000);
     expect(repository.transactions.map((transaction) => transaction.type)).toEqual(["BID_RELEASED", "BID_COMMITTED"]);
+    expect(repository.auditEvents).toEqual([expect.objectContaining({
+      actorId: "bidder-new",
+      action: "BID_PLACED",
+      lotId: lot.id,
+      details: expect.objectContaining({ amount: 1100, releasedBidderId: "bidder-old", releasedAmount: 1000 })
+    })]);
   });
 
   it("rejeita lance que não cabe no saldo disponível", async () => {

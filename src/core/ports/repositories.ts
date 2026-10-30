@@ -22,6 +22,7 @@ export type WalletTransactionType =
   | "DEPOSIT"
   | "BID_COMMITTED"
   | "BID_RELEASED"
+  | "BID_REFUNDED"
   | "AUCTION_DEBIT"
   | "AUCTION_CREDIT";
 export type NewWalletTransaction = {
@@ -33,6 +34,29 @@ export type NewWalletTransaction = {
   description: string;
   createdAt?: Date;
 };
+export type NewAuditEvent = {
+  actorId: string | null;
+  actorName?: string;
+  actorRole: "AUCTIONEER" | "BIDDER" | "SYSTEM";
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  lotId?: string | null;
+  details: Record<string, string | number | boolean | null>;
+};
+export type AuditEntry = {
+  id: string;
+  actorId: string | null;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  lotId: string | null;
+  lotTitle: string | null;
+  details: Record<string, unknown>;
+  createdAt: Date;
+};
 
 export interface IAuctionTransaction {
   lockLot(lotId: string): Promise<void>;
@@ -42,6 +66,7 @@ export interface IAuctionTransaction {
   findWallet(userId: string): Promise<Wallet | null>;
   adjustWallet(userId: string, adjustment: WalletAdjustment): Promise<Wallet>;
   recordWalletTransaction(transaction: NewWalletTransaction): Promise<void>;
+  recordAudit(event: NewAuditEvent): Promise<void>;
   addBid(bid: NewBid): Promise<Bid>;
   updateLotBid(lotId: string, update: LotBidUpdate): Promise<Lot>;
 }
@@ -62,6 +87,7 @@ export type SettlementResult = {
 
 export type LotSummary = {
   id: string;
+  sellerId: string;
   pokemonId: number;
   title: string;
   imagePath: string;
@@ -84,6 +110,9 @@ export interface ILotListingRepository {
 
 export interface ISettlementRepository {
   settleExpired(): Promise<SettlementResult[]>;
+}
+export interface ISellerAuditRepository {
+  getForSeller(sellerId: string): Promise<AuditEntry[]>;
 }
 
 export interface IUserRepository {
@@ -133,7 +162,12 @@ export interface ILotRepository {
   findById(id: string): Promise<Lot | null>;
   listOpen(): Promise<Lot[]>;
   createWithSellerWallet(input: NewLot): Promise<Lot>;
-  cancelOpenUnbidLot(lotId: string, sellerId: string): Promise<Lot>;
+  cancelOpenLot(lotId: string, sellerId: string): Promise<{
+    lot: Lot;
+    refundedBidderId: string | null;
+    refundedAmount: number;
+    refundedWallet: SettlementWallet | null;
+  }>;
 }
 
 export interface IBidRepository {

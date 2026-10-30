@@ -10,6 +10,7 @@ const routeMocks = vi.hoisted(() => ({
   createContainer: vi.fn(),
   listLotsExecute: vi.fn(),
   searchPokemonExecute: vi.fn(),
+  getPokemonDetailsExecute: vi.fn(),
   createLotExecute: vi.fn(),
   cancelLotExecute: vi.fn(),
   placeBidExecute: vi.fn(),
@@ -17,8 +18,10 @@ const routeMocks = vi.hoisted(() => ({
   depositBalanceExecute: vi.fn(),
   auditExecute: vi.fn(),
   bidderReportExecute: vi.fn(),
+  sellerAuditExecute: vi.fn(),
   userFindUnique: vi.fn(),
   userCreate: vi.fn(),
+  auditCreate: vi.fn(),
   lotFindUnique: vi.fn(),
   lotFindMany: vi.fn()
 }));
@@ -29,6 +32,13 @@ vi.mock("../../main/container", () => ({
 
 vi.mock("../../adapters/out/database/prisma/client", () => ({
   prisma: {
+    $transaction: async <T>(operation: (tx: {
+      user: { create: typeof routeMocks.userCreate; findUnique: typeof routeMocks.userFindUnique };
+      audit: { create: typeof routeMocks.auditCreate };
+    }) => Promise<T>) => operation({
+      user: { create: routeMocks.userCreate, findUnique: routeMocks.userFindUnique },
+      audit: { create: routeMocks.auditCreate }
+    }),
     user: {
       findUnique: routeMocks.userFindUnique,
       create: routeMocks.userCreate
@@ -36,20 +46,23 @@ vi.mock("../../adapters/out/database/prisma/client", () => ({
     lot: {
       findUnique: routeMocks.lotFindUnique,
       findMany: routeMocks.lotFindMany
-    }
+    },
+    audit: { create: routeMocks.auditCreate }
   }
 }));
 
 const routeUseCases = {
   listLots: { execute: routeMocks.listLotsExecute },
   searchPokemon: { execute: routeMocks.searchPokemonExecute },
+  getPokemonDetails: { execute: routeMocks.getPokemonDetailsExecute },
   createLot: { execute: routeMocks.createLotExecute },
   cancelLot: { execute: routeMocks.cancelLotExecute },
   placeBid: { execute: routeMocks.placeBidExecute },
   getWallet: { execute: routeMocks.getWalletExecute },
   depositBalance: { execute: routeMocks.depositBalanceExecute },
   audit: { execute: routeMocks.auditExecute },
-  bidderReport: { execute: routeMocks.bidderReportExecute }
+  bidderReport: { execute: routeMocks.bidderReportExecute },
+  sellerAudit: { execute: routeMocks.sellerAuditExecute }
 };
 
 const notifier: IAuctionNotifier = {
@@ -65,6 +78,7 @@ describe("HTTP routes integration", () => {
     vi.resetAllMocks();
     process.env.JWT_SECRET = "integration-test-secret-with-at-least-thirty-two-characters";
     routeMocks.createContainer.mockReturnValue(routeUseCases);
+    routeMocks.auditCreate.mockResolvedValue({});
     app = express();
     configureApp(app, notifier);
   });
@@ -94,6 +108,20 @@ describe("HTTP routes integration", () => {
 
     expect(response.status).toBe(200);
     expect(routeMocks.searchPokemonExecute).toHaveBeenCalledWith("Pikachu");
+  });
+
+  it("returns full Pokémon details for the lot-creation preview", async () => {
+    const pokemon = {
+      id: 25, name: "pikachu", imageUrl: "https://example.test/pikachu.png",
+      types: ["electric"], height: 4, weight: 60, stats: { hp: 35, speed: 90 }
+    };
+    routeMocks.getPokemonDetailsExecute.mockResolvedValue(pokemon);
+
+    const response = await request(app).get("/api/pokemon/25");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(pokemon);
+    expect(routeMocks.getPokemonDetailsExecute).toHaveBeenCalledWith("25");
   });
 
   it("rejects protected routes when no authentication token is provided", async () => {
@@ -171,6 +199,9 @@ describe("HTTP routes integration", () => {
     const createdUser = routeMocks.userCreate.mock.calls[0][0];
     expect(createdUser.data.wallet).toEqual({ create: {} });
     expect(await bcrypt.compare("password123", createdUser.data.passwordHash)).toBe(true);
+    expect(routeMocks.auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "USER_REGISTERED", actorId: "bidder-1" })
+    }));
   });
 
   it("rejects duplicate registration and invalid registration data", async () => {
@@ -239,7 +270,10 @@ describe("HTTP routes integration", () => {
     const token = new JwtTokenService().sign({ sub: "seller-1", role: "AUCTIONEER" });
     const createdLot = { id: "lot-1", status: "OPEN" };
     routeMocks.createLotExecute.mockResolvedValue(createdLot);
-    routeMocks.cancelLotExecute.mockResolvedValue({ id: "lot-1", status: "CANCELLED" });
+    routeMocks.cancelLotExecute.mockResolvedValue({
+      lot: { id: "lot-1", status: "CANCELLED" },
+      refundedAmount: 1100
+    });
 
     const createResponse = await request(app)
       .post("/api/lots")
@@ -254,6 +288,7 @@ describe("HTTP routes integration", () => {
       pokemon: "Pikachu", startingBid: 1000, minimumIncrement: 100, durationMinutes: 60, sellerId: "seller-1"
     });
     expect(cancelResponse.status).toBe(200);
+    expect(cancelResponse.body).toEqual({ lot: { id: "lot-1", status: "CANCELLED" }, refundedAmount: 1100 });
     expect(routeMocks.cancelLotExecute).toHaveBeenCalledWith("lot-1", "seller-1");
   });
 
@@ -266,7 +301,8 @@ describe("HTTP routes integration", () => {
       }])
       .mockResolvedValueOnce([{
         id: "lot-1", pokemonId: 25, title: "Pikachu", imagePath: "/uploads/pikachu.png",
-        currentBid: 1500, settledAt: "2030-01-01T00:00:00.000Z", _count: { bids: 3 }
+        currentBid: 1500, settledAt: "2030-01-01T00:00:00.000Z",
+        winner: { name: "Ash Ketchum", email: "ash@example.test" }, _count: { bids: 3 }
       }]);
 
     const reportResponse = await request(app)
@@ -280,7 +316,15 @@ describe("HTTP routes integration", () => {
     expect(reportResponse.body.totalReceived).toBe(1500);
     expect(reportResponse.body.lots[0].winner).toBe("Licitante #1234");
     expect(lotsResponse.status).toBe(200);
-    expect(lotsResponse.body[0]).toMatchObject({ amount: 1500, bidCount: 3 });
+    expect(lotsResponse.body[0]).toMatchObject({
+      amount: 1500,
+      bidCount: 3,
+      winner: { name: "Ash Ketchum", email: "ash@example.test" }
+    });
+    expect(routeMocks.lotFindMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ sellerId: "seller-1", status: "CLOSED" }),
+      select: expect.objectContaining({ winner: { select: { name: true, email: true } } })
+    }));
   });
 
   it("places bids and returns the bidder wallet and report", async () => {
@@ -314,6 +358,25 @@ describe("HTTP routes integration", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual(audit);
     expect(routeMocks.auditExecute).toHaveBeenCalledWith("lot-1");
+  });
+
+  it("limits seller audit reports to authenticated auctioneers", async () => {
+    const token = new JwtTokenService().sign({ sub: "seller-1", role: "AUCTIONEER" });
+    const bidderToken = new JwtTokenService().sign({ sub: "bidder-1", role: "BIDDER" });
+    const events = [{ action: "LOT_CANCELLED", actorName: "Bruno" }];
+    routeMocks.sellerAuditExecute.mockResolvedValue(events);
+
+    const response = await request(app)
+      .get("/api/seller/audit")
+      .set("Authorization", `Bearer ${token}`);
+    const forbiddenResponse = await request(app)
+      .get("/api/seller/audit")
+      .set("Authorization", `Bearer ${bidderToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(events);
+    expect(routeMocks.sellerAuditExecute).toHaveBeenCalledWith("seller-1");
+    expect(forbiddenResponse.status).toBe(403);
   });
 
   it("returns a settled receipt with winner status and rejects unsettled lots", async () => {

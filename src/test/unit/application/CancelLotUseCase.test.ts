@@ -17,37 +17,48 @@ const cancelledLot: Lot = {
 };
 
 describe("CancelLotUseCase", () => {
-  it("cancels the seller's lot and publishes its new status", async () => {
-    const cancelOpenUnbidLot = vi.fn<ILotRepository["cancelOpenUnbidLot"]>().mockResolvedValue(cancelledLot);
+  it("cancels a lot, refunds the leading bidder and publishes updates", async () => {
+    const result = {
+      lot: cancelledLot,
+      refundedBidderId: "bidder-1",
+      refundedAmount: 1000,
+      refundedWallet: { userId: "bidder-1", balance: 5000, committed: 0 }
+    };
+    const cancelOpenLot = vi.fn<ILotRepository["cancelOpenLot"]>().mockResolvedValue(result);
     const notifier: IAuctionNotifier = {
       bidPlaced: vi.fn(),
       lotUpdated: vi.fn(),
       walletUpdated: vi.fn()
     };
     const useCase = new CancelLotUseCase(
-      { findById: vi.fn(), listOpen: vi.fn(), createWithSellerWallet: vi.fn(), cancelOpenUnbidLot },
+      { findById: vi.fn(), listOpen: vi.fn(), createWithSellerWallet: vi.fn(), cancelOpenLot },
       notifier
     );
 
-    await expect(useCase.execute("lot-1", "seller-1")).resolves.toBe(cancelledLot);
-    expect(cancelOpenUnbidLot).toHaveBeenCalledWith("lot-1", "seller-1");
+    await expect(useCase.execute("lot-1", "seller-1")).resolves.toBe(result);
+    expect(cancelOpenLot).toHaveBeenCalledWith("lot-1", "seller-1");
     expect(notifier.lotUpdated).toHaveBeenCalledWith("lot-1", { status: "CANCELLED" });
+    expect(notifier.walletUpdated).toHaveBeenCalledWith("bidder-1", {
+      balance: 5000,
+      committed: 0,
+      available: 5000
+    });
   });
 
   it("does not publish an update when the repository rejects cancellation", async () => {
-    const cancelOpenUnbidLot = vi.fn<ILotRepository["cancelOpenUnbidLot"]>()
-      .mockRejectedValue(new Error("Lote possui lances"));
+    const cancelOpenLot = vi.fn<ILotRepository["cancelOpenLot"]>()
+      .mockRejectedValue(new Error("Falha ao cancelar lote"));
     const notifier: IAuctionNotifier = {
       bidPlaced: vi.fn(),
       lotUpdated: vi.fn(),
       walletUpdated: vi.fn()
     };
     const useCase = new CancelLotUseCase(
-      { findById: vi.fn(), listOpen: vi.fn(), createWithSellerWallet: vi.fn(), cancelOpenUnbidLot },
+      { findById: vi.fn(), listOpen: vi.fn(), createWithSellerWallet: vi.fn(), cancelOpenLot },
       notifier
     );
 
-    await expect(useCase.execute("lot-1", "seller-1")).rejects.toThrow("Lote possui lances");
+    await expect(useCase.execute("lot-1", "seller-1")).rejects.toThrow("Falha ao cancelar lote");
     expect(notifier.lotUpdated).not.toHaveBeenCalled();
   });
 });

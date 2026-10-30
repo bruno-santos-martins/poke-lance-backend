@@ -26,7 +26,7 @@ describe("CreateLotUseCase", () => {
       findById: vi.fn(),
       listOpen: vi.fn(),
       createWithSellerWallet,
-      cancelOpenUnbidLot: vi.fn()
+      cancelOpenLot: vi.fn()
     }
   );
 

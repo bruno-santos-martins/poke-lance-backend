@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./client";
-import { IAuctionTransaction, IBidTransactionRepository, LotBidUpdate, NewBid, NewWalletTransaction, WalletAdjustment } from "../../../../core/ports/repositories";
+import { IAuctionTransaction, IBidTransactionRepository, LotBidUpdate, NewAuditEvent, NewBid, NewWalletTransaction, WalletAdjustment } from "../../../../core/ports/repositories";
 import { Bid, Lot, Wallet } from "../../../../core/domain/entities";
+import { recordAudit } from "./PrismaAuditWriter";
 
 function mapPersistedLotToDomain(persistedLot: {
   id: string; sellerId: string; title: string; imagePath: string; startingBid: number;
@@ -63,6 +64,10 @@ class PrismaAuctionTransaction implements IAuctionTransaction {
 
   async recordWalletTransaction(walletTransaction: NewWalletTransaction): Promise<void> {
     await this.prismaTransactionClient.walletTransaction.create({ data: walletTransaction });
+  }
+
+  recordAudit(event: NewAuditEvent): Promise<void> {
+    return recordAudit(this.prismaTransactionClient, event);
   }
 
   async addBid(bid: NewBid): Promise<Bid> {

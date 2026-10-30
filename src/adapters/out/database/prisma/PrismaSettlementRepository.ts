@@ -5,6 +5,7 @@ import {
   SettlementWallet
 } from "../../../../core/ports/repositories";
 import { prisma } from "./client";
+import { recordAudit } from "./PrismaAuditWriter";
 
 const MAX_LOTS_PER_SETTLEMENT_BATCH = 100;
 
@@ -59,6 +60,19 @@ export class PrismaSettlementRepository implements ISettlementRepository {
         status: "CLOSED",
         winnerId: winningBid?.bidderId ?? null,
         settledAt: settlementTime
+      }
+    });
+    await recordAudit(transactionClient, {
+      actorId: null,
+      actorRole: "SYSTEM",
+      action: "LOT_SETTLED",
+      entityType: "LOT",
+      entityId: lotId,
+      lotId,
+      details: {
+        title: lot.title,
+        winnerId: winningBid?.bidderId ?? null,
+        amount: winningBid?.amount ?? 0
       }
     });
 

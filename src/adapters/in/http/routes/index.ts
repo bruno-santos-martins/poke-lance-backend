@@ -7,6 +7,7 @@ import { JwtTokenService } from "../../../out/crypto/JwtTokenService";
 import { createContainer } from "../../../../main/container";
 import { authenticate, authenticateIfPresent, requireRole } from "../middlewares/auth";
 import { IAuctionNotifier } from "../../../../core/ports/services";
+import { recordAudit } from "../../../out/database/prisma/PrismaAuditWriter";
 
 const tokens = new JwtTokenService();
 
@@ -32,14 +33,26 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
     const input = registerSchema.parse(req.body);
     const existing = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
     if (existing) throw new AppError("Este e-mail já está registado.", 409);
-    const user = await prisma.user.create({
-      data: {
-        name: input.name,
-        email: input.email.toLowerCase(),
-        passwordHash: await bcrypt.hash(input.password, 12),
-        role: input.role,
-        ...(input.role === "BIDDER" ? { wallet: { create: {} } } : {})
-      }
+    const user = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          name: input.name,
+          email: input.email.toLowerCase(),
+          passwordHash: await bcrypt.hash(input.password, 12),
+          role: input.role,
+          ...(input.role === "BIDDER" ? { wallet: { create: {} } } : {})
+        }
+      });
+      await recordAudit(tx, {
+        actorId: createdUser.id,
+        actorName: createdUser.name,
+        actorRole: input.role,
+        action: "USER_REGISTERED",
+        entityType: "USER",
+        entityId: createdUser.id,
+        details: { role: input.role }
+      });
+      return createdUser;
     });
     res.status(201).json({ token: tokens.sign({ sub: user.id, role: user.role }), user: { id: user.id, name: user.name, role: user.role } });
   }));
@@ -48,6 +61,15 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
     const input = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
     if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) throw new AppError("E-mail ou senha inválidos.", 401);
+    await prisma.$transaction((tx) => recordAudit(tx, {
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.role,
+      action: "USER_LOGGED_IN",
+      entityType: "USER",
+      entityId: user.id,
+      details: {}
+    }));
     res.json({ token: tokens.sign({ sub: user.id, role: user.role }), user: { id: user.id, name: user.name, role: user.role } });
   }));
 
@@ -61,6 +83,10 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
     res.json(await container.searchPokemon.execute(q));
   }));
 
+  router.get("/pokemon/:id", asyncRoute(async (req, res) => {
+    res.json(await container.getPokemonDetails.execute(routeId(req)));
+  }));
+
   router.get("/lots/:id", asyncRoute(async (req, res) => {
     const id = routeId(req);
     const lot = await prisma.lot.findUnique({
@@ -69,7 +95,7 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
     });
     if (!lot) throw new AppError("Lote não encontrado.", 404);
     res.json({
-      id: lot.id, pokemonId: lot.pokemonId, title: lot.title, imagePath: lot.imagePath,
+      id: lot.id, sellerId: lot.sellerId, pokemonId: lot.pokemonId, title: lot.title, imagePath: lot.imagePath,
       types: lot.types, height: lot.height, weight: lot.weight, stats: lot.stats,
       startingBid: lot.startingBid, minimumIncrement: lot.minimumIncrement, currentBid: lot.currentBid,
       endsAt: lot.endsAt, status: lot.status, settledAt: lot.settledAt, seller: lot.seller.name,
@@ -86,8 +112,8 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
   }));
 
   router.delete("/lots/:id", authenticate, requireRole("AUCTIONEER"), asyncRoute(async (req, res) => {
-    const changed = await container.cancelLot.execute(routeId(req), req.user!.id);
-    res.json(changed);
+    const result = await container.cancelLot.execute(routeId(req), req.user!.id);
+    res.json({ lot: result.lot, refundedAmount: result.refundedAmount });
   }));
 
   router.get("/seller/reports", authenticate, requireRole("AUCTIONEER"), asyncRoute(async (req, res) => {
@@ -97,6 +123,10 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
       orderBy: { settledAt: "desc" }
     });
     res.json({ lots: lots.map((lot) => ({ id: lot.id, title: lot.title, settledAt: lot.settledAt, winner: lot.winnerId ? maskedBidder(lot.winnerId) : null, amount: lot.bids[0]?.amount ?? 0 })), totalReceived: lots.reduce((total, lot) => total + (lot.bids[0]?.amount ?? 0), 0) });
+  }));
+
+  router.get("/seller/audit", authenticate, requireRole("AUCTIONEER"), asyncRoute(async (req, res) => {
+    res.json(await container.sellerAudit.execute(req.user!.id));
   }));
 
   router.get("/seller/auctioned-lots", authenticate, requireRole("AUCTIONEER"), asyncRoute(async (req, res) => {
@@ -109,6 +139,7 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
         imagePath: true,
         currentBid: true,
         settledAt: true,
+        winner: { select: { name: true, email: true } },
         _count: { select: { bids: true } }
       },
       orderBy: { settledAt: "desc" }
@@ -120,7 +151,8 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
       imagePath: lot.imagePath,
       amount: lot.currentBid ?? 0,
       settledAt: lot.settledAt,
-      bidCount: lot._count.bids
+      bidCount: lot._count.bids,
+      winner: lot.winner
     })));
   }));
 
