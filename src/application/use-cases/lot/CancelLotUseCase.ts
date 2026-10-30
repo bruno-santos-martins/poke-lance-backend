@@ -1,8 +1,12 @@
 import { ILotRepository } from "../../../core/ports/repositories";
-import { IAuctionNotifier } from "../../../core/ports/services";
+import { IAuctionNotifier, ILocalStorageService } from "../../../core/ports/services";
 
 export class CancelLotUseCase {
-  constructor(private readonly lots: ILotRepository, private readonly notifier: IAuctionNotifier) {}
+  constructor(
+    private readonly lots: ILotRepository,
+    private readonly storage: ILocalStorageService,
+    private readonly notifier: IAuctionNotifier
+  ) {}
 
   async execute(lotId: string, sellerId: string) {
     const result = await this.lots.cancelOpenLot(lotId, sellerId);
@@ -14,6 +18,17 @@ export class CancelLotUseCase {
         available: result.refundedWallet.balance - result.refundedWallet.committed
       });
     }
-    return result;
+
+    try {
+      const imageIsInUse = await this.lots.isImageUsedByOtherActiveLot(result.lot.imagePath, result.lot.id);
+      if (!imageIsInUse) await this.storage.deleteImage(result.lot.imagePath);
+      return result;
+    } catch (error) {
+      console.error(`Lote ${result.lot.id} cancelado, mas não foi possível remover a imagem.`, error);
+      return {
+        ...result,
+        imageCleanupWarning: "O lote foi cancelado, mas não foi possível remover a imagem armazenada."
+      };
+    }
   }
 }

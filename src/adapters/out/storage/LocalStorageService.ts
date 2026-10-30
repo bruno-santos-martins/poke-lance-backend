@@ -13,6 +13,17 @@ function getErrorCode(error: unknown): string | undefined {
 export class LocalStorageService implements ILocalStorageService {
   private readonly cardsDirectory = path.resolve(process.env.UPLOADS_DIR ?? "./uploads", "cards");
 
+  async deleteImage(imagePath: string): Promise<void> {
+    const filename = imagePath.startsWith("/uploads/cards/")
+      ? imagePath.slice("/uploads/cards/".length)
+      : "";
+    if (!/^pokemon-[a-zA-Z0-9-]+\.(png|webp|jpg|svg)$/.test(filename)) {
+      throw new AppError("O caminho da imagem do lote não é válido para remoção.", 500);
+    }
+
+    await rm(path.join(this.cardsDirectory, filename), { force: true });
+  }
+
   async saveImage(url: string, pokemonId: number): Promise<string> {
     let response;
     try {

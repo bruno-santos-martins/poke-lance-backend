@@ -162,6 +162,7 @@ export interface ILotRepository {
   findById(id: string): Promise<Lot | null>;
   listOpen(): Promise<Lot[]>;
   createWithSellerWallet(input: NewLot): Promise<Lot>;
+  isImageUsedByOtherActiveLot(imagePath: string, lotId: string): Promise<boolean>;
   cancelOpenLot(lotId: string, sellerId: string): Promise<{
     lot: Lot;
     refundedBidderId: string | null;

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/main/server.ts",
+    "local:container": "docker compose up --build",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/main/server.js",
     "db:up": "docker compose up -d postgres",

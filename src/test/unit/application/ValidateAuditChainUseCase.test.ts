@@ -41,7 +41,13 @@ function createUseCase(
   if (bidRepositoryError) listByLotId.mockRejectedValue(bidRepositoryError);
   const useCase = new ValidateAuditChainUseCase(
     hashService,
-    { findById, listOpen: vi.fn(), createWithSellerWallet: vi.fn(), cancelOpenLot: vi.fn() },
+    {
+      findById,
+      listOpen: vi.fn(),
+      createWithSellerWallet: vi.fn(),
+      isImageUsedByOtherActiveLot: vi.fn(),
+      cancelOpenLot: vi.fn()
+    },
     { listByLotId }
   );
   return { useCase, hashService, findById, listByLotId };
@@ -79,7 +85,13 @@ describe("ValidateAuditChainUseCase", () => {
     const listByLotId = vi.fn<IBidRepository["listByLotId"]>().mockResolvedValue([firstBid, secondBid]);
     const useCase = new ValidateAuditChainUseCase(
       hashService,
-      { findById, listOpen: vi.fn(), createWithSellerWallet: vi.fn(), cancelOpenLot: vi.fn() },
+      {
+        findById,
+        listOpen: vi.fn(),
+        createWithSellerWallet: vi.fn(),
+        isImageUsedByOtherActiveLot: vi.fn(),
+        cancelOpenLot: vi.fn()
+      },
       { listByLotId }
     );
 

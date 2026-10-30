@@ -43,6 +43,18 @@ export class PrismaLotRepository implements ILotRepository {
     });
   }
 
+  async isImageUsedByOtherActiveLot(imagePath: string, lotId: string): Promise<boolean> {
+    const lot = await prisma.lot.findFirst({
+      where: {
+        imagePath,
+        id: { not: lotId },
+        status: { in: ["OPEN", "CLOSED"] }
+      },
+      select: { id: true }
+    });
+    return lot !== null;
+  }
+
   async cancelOpenLot(lotId: string, sellerId: string) {
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "Lot" WHERE "id" = ${lotId} FOR UPDATE`;

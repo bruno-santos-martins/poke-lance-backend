@@ -26,11 +26,12 @@ export function createContainer(notifier: IAuctionNotifier) {
   const lotRepository = new PrismaLotRepository();
   const walletRepository = new PrismaWalletRepository();
   const pokeApi = new PokeApiAdapter();
+  const storage = new LocalStorageService();
   return {
-    createLot: new CreateLotUseCase(pokeApi, new LocalStorageService(), lotRepository),
+    createLot: new CreateLotUseCase(pokeApi, storage, lotRepository),
     searchPokemon: new SearchPokemonUseCase(pokeApi),
     getPokemonDetails: new GetPokemonDetailsUseCase(pokeApi),
-    cancelLot: new CancelLotUseCase(lotRepository, notifier),
+    cancelLot: new CancelLotUseCase(lotRepository, storage, notifier),
     listLots: new ListLotsUseCase(new PrismaLotListingRepository()),
     placeBid: new PlaceBidUseCase(hashService, notifier, new PrismaAuctionTransactionRepository()),
     audit: new ValidateAuditChainUseCase(hashService, lotRepository, new PrismaBidRepository()),

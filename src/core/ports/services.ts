@@ -20,6 +20,7 @@ export interface IPokeApiProvider {
 
 export interface ILocalStorageService {
   saveImage(url: string, pokemonId: number): Promise<string>;
+  deleteImage(imagePath: string): Promise<void>;
 }
 
 export interface IHashService {

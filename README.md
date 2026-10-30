@@ -79,6 +79,7 @@ Use essas contas apenas em desenvolvimento. Não execute o seed em produção se
 | Comando | Descrição |
 |---|---|
 | `npm run dev` | Executa a API em modo de desenvolvimento. |
+| `npm run local:container` | Constrói e inicia API, PostgreSQL, migrations e seed em containers Docker. |
 | `npm run build` | Compila o backend TypeScript. |
 | `npm start` | Inicia o servidor compilado. |
 | `npm run start:prod` | Inicia o servidor compilado para produção. |
@@ -123,7 +124,7 @@ O servidor também expõe `/health`. O Socket.IO usa as salas `lot:join` e `lot:
 - A liquidação verifica lotes expirados a cada cinco segundos e atualiza as carteiras dentro de transações PostgreSQL.
 - Lances guardam sequência e hash encadeado SHA-256, verificáveis pelo endpoint de auditoria.
 - O modelo `Audit` registra ações como cadastro, login, criação e cancelamento de lote, lance, depósito e liquidação.
-- Em caso de cancelamento, o lote e seu histórico são preservados; o valor comprometido do lance vigente é liberado.
+- Em caso de cancelamento, o lote e seu histórico são preservados; o valor comprometido do lance vigente é liberado. A imagem é removida quando nenhum outro lote aberto ou liquidado usa o mesmo arquivo.
 - O nome e o e-mail do ganhador só são retornados ao leiloeiro autenticado que é dono do lote.
 - Imagens de cartas são armazenadas em `UPLOADS_DIR` e servidas pela rota `/uploads`. Em produção, use armazenamento persistente.
 
@@ -156,13 +157,16 @@ O núcleo (`core`) define domínio e contratos; `application` implementa os caso
 
 ## Docker Compose
 
-Para subir API, PostgreSQL, aplicar migrations e carregar dados de demonstração em conjunto:
+Existem dois modos locais de execução:
+
+- `npm run dev` roda a API diretamente na máquina. Configure o `.env` e inicie o banco separadamente, por exemplo com `npm run db:up`.
+- `npm run local:container` constrói a imagem e sobe API, PostgreSQL, migrations e dados de demonstração em containers. O Compose usa os volumes configurados para persistir o banco e as imagens.
 
 ```powershell
-docker compose up --build
+npm run local:container
 ```
 
-O Compose usa volumes para persistir o banco e as imagens. Para parar os serviços:
+O serviço exige um `JWT_SECRET` no arquivo `.env` antes de iniciar. A API fica disponível em `http://localhost:4000`. Para parar os containers:
 
 ```powershell
 docker compose down
@@ -178,3 +182,32 @@ Crie um Web Service usando Node e a raiz do repositório do backend. Configure:
 - **Environment:** `DATABASE_URL`, `JWT_SECRET`, `CLIENT_ORIGIN` e `UPLOADS_DIR`.
 
 Use a URL interna do PostgreSQL do Render em `DATABASE_URL`; configure `CLIENT_ORIGIN` com a origem pública do frontend e um `JWT_SECRET` forte e exclusivo. Se imagens devem persistir entre deploys, associe um disco persistente e aponte `UPLOADS_DIR` para o caminho montado.
+
+## Como executar o projeto
+
+### Opção prioritária: Docker
+
+Com o Docker Desktop aberto, execute os comandos a partir desta pasta (`backend`):
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Configure `JWT_SECRET` no arquivo `.env` com um segredo aleatório de pelo menos 32 caracteres. Em seguida, construa e inicie a API e os serviços necessários:
+
+```powershell
+npm run local:container
+```
+
+O comando inicia o PostgreSQL, aplica as migrations, carrega as contas de demonstração e executa a API dentro de containers. A API fica disponível em `http://localhost:4000`; o frontend deve apontar `VITE_API_URL` para `http://localhost:4000`. Para parar os containers, use `Ctrl+C` ou execute `docker compose down`.
+
+### Alternativa: executar a API na máquina
+
+Para rodar somente o backend fora do container, configure `DATABASE_URL`, `JWT_SECRET`, `PORT` e as demais variáveis no `.env`, inicie o PostgreSQL separadamente e execute:
+
+```powershell
+npm install
+npm run db:generate
+npm run db:migrate
+npm run dev
+```

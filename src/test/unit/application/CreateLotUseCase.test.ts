@@ -17,15 +17,17 @@ describe("CreateLotUseCase", () => {
   const findPokemon = vi.fn<IPokeApiProvider["findPokemon"]>();
   const searchPokemon = vi.fn<IPokeApiProvider["searchPokemon"]>();
   const saveImage = vi.fn<ILocalStorageService["saveImage"]>();
+  const deleteImage = vi.fn<ILocalStorageService["deleteImage"]>();
   const createWithSellerWallet = vi.fn<ILotRepository["createWithSellerWallet"]>();
 
   const useCase = new CreateLotUseCase(
     { findPokemon, searchPokemon },
-    { saveImage },
+    { saveImage, deleteImage },
     {
       findById: vi.fn(),
       listOpen: vi.fn(),
       createWithSellerWallet,
+      isImageUsedByOtherActiveLot: vi.fn(),
       cancelOpenLot: vi.fn()
     }
   );
