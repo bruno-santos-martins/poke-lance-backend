@@ -3,15 +3,15 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: auction
-      POSTGRES_PASSWORD: auction
-      POSTGRES_DB: pokemon_auction
+      POSTGRES_USER: ${POSTGRES_USER:-auction}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no ficheiro .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pokemon_auction}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U auction -d pokemon_auction"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,7 +22,7 @@ services:
       target: build
     command: npm run db:deploy
     environment:
-      DATABASE_URL: postgresql://auction:auction@postgres:5432/pokemon_auction?schema=public
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-auction}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no ficheiro .env}@postgres:5432/${POSTGRES_DB:-pokemon_auction}?schema=public"
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,7 +34,7 @@ services:
       target: build
     command: npm run db:seed
     environment:
-      DATABASE_URL: postgresql://auction:auction@postgres:5432/pokemon_auction?schema=public
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-auction}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no ficheiro .env}@postgres:5432/${POSTGRES_DB:-pokemon_auction}?schema=public"
       UPLOADS_DIR: ./uploads
     volumes:
       - auction_uploads:/app/uploads
@@ -47,7 +47,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://auction:auction@postgres:5432/pokemon_auction?schema=public
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-auction}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no ficheiro .env}@postgres:5432/${POSTGRES_DB:-pokemon_auction}?schema=public"
       JWT_SECRET: ${JWT_SECRET:?Configure JWT_SECRET no ficheiro .env}
       PORT: 4000
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:5173}

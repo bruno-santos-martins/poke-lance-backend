@@ -1,0 +1,20 @@
+export function isAllowedSocketOrigin(origin: string | undefined, clientOrigin: string): boolean {
+  return origin === undefined || origin === clientOrigin;
+}
+
+export function createSocketEventRateLimiter(limit = 60, windowMs = 60_000) {
+  let windowStartedAt: number | undefined;
+  let eventCount = 0;
+
+  return (now = Date.now()) => {
+    if (windowStartedAt === undefined || now - windowStartedAt >= windowMs) {
+      windowStartedAt = now;
+      eventCount = 0;
+    }
+
+    if (eventCount >= limit) return false;
+
+    eventCount += 1;
+    return true;
+  };
+}

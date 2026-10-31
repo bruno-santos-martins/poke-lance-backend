@@ -1,14 +1,18 @@
 import { Router } from "express";
 import { IAuctionNotifier } from "../../../../core/ports/services";
 import { authenticate, authenticateIfPresent, requireRole } from "../middlewares/auth";
+import { apiRateLimit, loginAccountRateLimit, loginIpRateLimit, registerRateLimit } from "../middlewares/rateLimits";
 import { createControllers } from "../controllers";
 
 export function buildRouter(notifier: IAuctionNotifier): Router {
   const router = Router();
   const controllers = createControllers(notifier);
+  router.use(apiRateLimit);
 
-  router.post("/auth/register", controllers.register);
-  router.post("/auth/login", controllers.login);
+  router.post("/auth/register", registerRateLimit, controllers.register);
+  router.post("/auth/login", loginIpRateLimit, loginAccountRateLimit, controllers.login);
+  router.post("/auth/logout", controllers.logout);
+  router.get("/auth/session", authenticateIfPresent, controllers.session);
 
   router.get("/lots", controllers.listLots);
   router.get("/pokemon/search", controllers.searchPokemon);

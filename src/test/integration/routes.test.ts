@@ -84,10 +84,16 @@ describe("HTTP routes integration", () => {
   });
 
   it("returns a healthy response", async () => {
-    const response = await request(app).get("/health");
+    const response = await request(app)
+      .get("/health")
+      .set("Origin", "http://localhost:5173");
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: "ok" });
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    expect(response.headers["access-control-allow-credentials"]).toBe("true");
   });
 
   it("lists open lots through the public route", async () => {
@@ -194,7 +200,10 @@ describe("HTTP routes integration", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.user).toEqual({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
-    expect(response.body.token).toEqual(expect.any(String));
+    expect(response.body.token).toBeUndefined();
+    expect(response.headers["set-cookie"]?.[0]).toContain("HttpOnly");
+    expect(response.headers["set-cookie"]?.[0]).toContain("SameSite=Strict");
+    expect(response.headers["set-cookie"]?.[0]).toContain("Max-Age=3600");
     expect(routeMocks.userFindUnique).toHaveBeenCalledWith({ where: { email: "bruno@example.com" } });
     const createdUser = routeMocks.userCreate.mock.calls[0][0];
     expect(createdUser.data.wallet).toEqual({ create: {} });
@@ -234,8 +243,49 @@ describe("HTTP routes integration", () => {
 
     expect(successResponse.status).toBe(200);
     expect(successResponse.body.user).toEqual({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
-    expect(successResponse.body.token).toEqual(expect.any(String));
+    expect(successResponse.body.token).toBeUndefined();
     expect(invalidResponse.status).toBe(401);
+
+    routeMocks.getWalletExecute.mockResolvedValue({ balance: 5000, committed: 0, available: 5000 });
+    routeMocks.userFindUnique.mockResolvedValue({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
+    const cookie = successResponse.headers["set-cookie"]?.[0]?.split(";")[0];
+    expect(cookie).toBeDefined();
+    const sessionResponse = await request(app)
+      .get("/api/auth/session")
+      .set("Cookie", cookie!);
+    const walletResponse = await request(app)
+      .get("/api/wallet")
+      .set("Cookie", cookie!);
+    const forbiddenCookieWrite = await request(app)
+      .post("/api/wallet/deposits")
+      .set("Cookie", cookie!)
+      .set("Origin", "https://attacker.example")
+      .send({ amount: 1000 });
+    const logoutResponse = await request(app)
+      .post("/api/auth/logout")
+      .set("Cookie", cookie!)
+      .set("Origin", "http://localhost:5173");
+
+    expect(sessionResponse.body.user).toEqual({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
+    expect(walletResponse.body).toEqual({ balance: 5000, committed: 0, available: 5000 });
+    expect(forbiddenCookieWrite.status).toBe(403);
+    expect(routeMocks.depositBalanceExecute).not.toHaveBeenCalled();
+    expect(logoutResponse.status).toBe(200);
+    expect(logoutResponse.headers["set-cookie"]?.[0]).toContain("auction-session=;");
+    expect(logoutResponse.headers["set-cookie"]?.[0]).toContain("Expires=Thu, 01 Jan 1970");
+  });
+
+  it("rate limits repeated login attempts for the same account and IP", async () => {
+    routeMocks.userFindUnique.mockResolvedValue(null);
+    const responses = [];
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      responses.push(await request(app)
+        .post("/api/auth/login")
+        .send({ email: "rate-limit@example.test", password: "wrong-password" }));
+    }
+
+    expect(responses.slice(0, 8).every((response) => response.status === 401)).toBe(true);
+    expect(responses[8].status).toBe(429);
   });
 
   it("lists all lots when requested and rejects an invalid Pokémon search", async () => {

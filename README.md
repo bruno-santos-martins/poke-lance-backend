@@ -31,14 +31,17 @@ Os comandos desta seção são executados a partir da pasta `backend`.
 2. Configure as variáveis em `.env`:
 
    ```env
-   DATABASE_URL="postgresql://auction:auction@localhost:5432/pokemon_auction?schema=public"
+   POSTGRES_USER="auction"
+   POSTGRES_PASSWORD="gere-uma-senha-local-url-safe"
+   POSTGRES_DB="pokemon_auction"
+   DATABASE_URL="postgresql://auction:gere-uma-senha-local-url-safe@localhost:5432/pokemon_auction?schema=public"
    JWT_SECRET="substitua-por-um-segredo-aleatorio-com-32-caracteres-ou-mais"
    PORT=4000
    CLIENT_ORIGIN="http://localhost:5173"
    UPLOADS_DIR="./uploads"
    ```
 
-   `JWT_SECRET` deve ter pelo menos 32 caracteres. `CLIENT_ORIGIN` deve corresponder à origem do frontend autorizada para CORS e Socket.IO.
+   `JWT_SECRET` deve ter pelo menos 32 caracteres. `POSTGRES_PASSWORD` deve ser forte e URL-safe para compor a `DATABASE_URL`. `CLIENT_ORIGIN` deve corresponder à origem do frontend autorizada para CORS e Socket.IO.
 
 3. Inicie o PostgreSQL pelo Docker Compose ou use uma instância PostgreSQL existente:
 
@@ -210,6 +213,15 @@ npm run local:container:again
 ```
 
 O banco é persistido no volume `postgres_data`. Evite `docker compose down -v` se quiser manter os dados.
+O PostgreSQL é publicado somente no loopback (`127.0.0.1`) e usa `POSTGRES_PASSWORD` do `.env`. O Compose é destinado ao desenvolvimento local; não o exponha diretamente em produção.
+
+## Hardening de produção
+
+- Login: limite geral de 300 requisições por IP a cada 15 minutos, limite de 30 tentativas de login por IP e 8 por combinação de IP/conta; cadastros limitados a 10 por hora. As respostas de limite incluem headers padronizados. Os contadores padrão são em memória por processo: para múltiplas réplicas, configure um store compartilhado antes do deploy.
+- Sessões: JWT HS256 com issuer fixo e validade de 1 hora, entregue apenas em cookie `HttpOnly`, `SameSite=Strict`, `Secure` em produção. O cliente envia cookies com credenciais e chamadas mutáveis autenticadas por cookie exigem `Origin` igual a `CLIENT_ORIGIN`.
+- HTTP: Helmet aplica headers de segurança; CORS permite apenas `CLIENT_ORIGIN` com credenciais. Termine TLS no ingress/reverse proxy e configure `TRUST_PROXY_HOPS` com o número exato de proxies confiáveis (não use confiança irrestrita).
+- Segredos e banco: use secret manager para `JWT_SECRET`, `POSTGRES_PASSWORD` e `DATABASE_URL`; não publique a porta PostgreSQL em produção. Rotacione credenciais que tenham sido usadas fora do ambiente local.
+- Monitoramento: registre e alerte sobre respostas 429, sequências de falhas de login, erros 401/403 e falhas do banco, sem registrar senhas, cookies, tokens ou payloads sensíveis.
 
 ### Alternativa: executar a API na máquina
 

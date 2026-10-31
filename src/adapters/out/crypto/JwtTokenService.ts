@@ -10,12 +10,12 @@ export class JwtTokenService implements ITokenService {
   }
 
   sign(payload: { sub: string; role: string }): string {
-    return jwt.sign(payload, this.secret, { expiresIn: "12h", issuer: "pokemon-auction" });
+    return jwt.sign(payload, this.secret, { algorithm: "HS256", expiresIn: "1h", issuer: "pokemon-auction" });
   }
 
   verify(token: string): { sub: string; role: string } {
     try {
-      const payload = jwt.verify(token, this.secret, { issuer: "pokemon-auction" });
+      const payload = jwt.verify(token, this.secret, { algorithms: ["HS256"], issuer: "pokemon-auction" });
       if (typeof payload === "string" || typeof payload.sub !== "string" || typeof payload.role !== "string") throw new Error("Invalid token payload");
       return { sub: payload.sub, role: payload.role };
     } catch {
