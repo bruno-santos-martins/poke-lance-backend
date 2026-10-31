@@ -1,7 +1,7 @@
 import express, { type Express } from "express";
 import bcrypt from "bcryptjs";
 import request from "supertest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JwtTokenService } from "../../adapters/out/crypto/JwtTokenService";
 import type { IAuctionNotifier } from "../../core/ports/services";
 import { configureApp } from "../../main/configureApp";
@@ -452,5 +452,60 @@ describe("HTTP routes integration", () => {
       winner: "Licitante #WINN", isCurrentUserWinner: true, amount: 1500
     });
     expect(unsettledResponse.status).toBe(409);
+  });
+});
+
+describe("configureApp", () => {
+  const previousTrustProxyHops = process.env.TRUST_PROXY_HOPS;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    routeMocks.createContainer.mockReturnValue(routeUseCases);
+  });
+
+  afterEach(() => {
+    if (previousTrustProxyHops === undefined) delete process.env.TRUST_PROXY_HOPS;
+    else process.env.TRUST_PROXY_HOPS = previousTrustProxyHops;
+  });
+
+  it("trusts the configured number of proxy hops", () => {
+    process.env.TRUST_PROXY_HOPS = "1";
+    const app = express();
+
+    configureApp(app, notifier);
+
+    expect(app.get("trust proxy")).toBe(1);
+  });
+
+  it.each(["0", "-1", "1.5", "abc"])("rejects an invalid TRUST_PROXY_HOPS value %s", (value) => {
+    process.env.TRUST_PROXY_HOPS = value;
+
+    expect(() => configureApp(express(), notifier)).toThrow("TRUST_PROXY_HOPS");
+  });
+
+  it("hides unexpected errors behind a generic 500", async () => {
+    delete process.env.TRUST_PROXY_HOPS;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    routeMocks.listLotsExecute.mockRejectedValue(new Error("database exploded"));
+    const app = express();
+    configureApp(app, notifier);
+
+    const response = await request(app).get("/api/lots");
+
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: "Erro interno do servidor." });
+    consoleError.mockRestore();
+  });
+
+  it("maps errors carrying a 404 status to not found", async () => {
+    delete process.env.TRUST_PROXY_HOPS;
+    routeMocks.listLotsExecute.mockRejectedValue(Object.assign(new Error("missing"), { status: 404 }));
+    const app = express();
+    configureApp(app, notifier);
+
+    const response = await request(app).get("/api/lots");
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Recurso não encontrado." });
   });
 });
