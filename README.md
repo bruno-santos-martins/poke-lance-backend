@@ -80,6 +80,7 @@ Use essas contas apenas em desenvolvimento. Não execute o seed em produção se
 |---|---|
 | `npm run dev` | Executa a API em modo de desenvolvimento. |
 | `npm run local:container` | Constrói e inicia API, PostgreSQL, migrations e seed em containers Docker. |
+| `npm run local:container:again` | Inicia o PostgreSQL e reconstrói/inicia somente a API, sem executar migrations ou seed novamente. |
 | `npm run build` | Compila o backend TypeScript. |
 | `npm start` | Inicia o servidor compilado. |
 | `npm run start:prod` | Inicia o servidor compilado para produção. |
@@ -161,6 +162,7 @@ Existem dois modos locais de execução:
 
 - `npm run dev` roda a API diretamente na máquina. Configure o `.env` e inicie o banco separadamente, por exemplo com `npm run db:up`.
 - `npm run local:container` constrói a imagem e sobe API, PostgreSQL, migrations e dados de demonstração em containers. O Compose usa os volumes configurados para persistir o banco e as imagens.
+- Depois da primeira inicialização completa, use `npm run local:container:again` para iniciar o PostgreSQL e reconstruir/iniciar somente a API. Esse comando não apaga nem recria os volumes e não executa migrations ou seed; alterações futuras no schema precisam ter as migrations aplicadas separadamente.
 
 ```powershell
 npm run local:container
@@ -200,6 +202,14 @@ npm run local:container
 ```
 
 O comando inicia o PostgreSQL, aplica as migrations, carrega as contas de demonstração e executa a API dentro de containers. A API fica disponível em `http://localhost:4000`; o frontend deve apontar `VITE_API_URL` para `http://localhost:4000`. Para parar os containers, use `Ctrl+C` ou execute `docker compose down`.
+
+Nas próximas inicializações, para subir somente o banco e a API sem executar migrations ou seed novamente, use:
+
+```powershell
+npm run local:container:again
+```
+
+O banco é persistido no volume `postgres_data`. Evite `docker compose down -v` se quiser manter os dados.
 
 ### Alternativa: executar a API na máquina
 

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/main/server.ts",
     "local:container": "docker compose up --build",
+    "local:container:again": "docker compose up -d postgres && docker compose up -d --build --no-deps api",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/main/server.js",
     "db:up": "docker compose up -d postgres",
