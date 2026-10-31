@@ -9,6 +9,7 @@ import { AppError } from "../core/domain/errors";
 import { IAuctionNotifier } from "../core/ports/services";
 import { requireTrustedOrigin } from "../adapters/in/http/middlewares/requireTrustedOrigin";
 import { buildRouter } from "../adapters/in/http/routes";
+import { getClientOrigins } from "../adapters/in/http/clientOrigins";
 
 const errors: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof ZodError) {
@@ -34,8 +35,9 @@ export function configureApp(app: Express, notifier: IAuctionNotifier): void {
     if (!Number.isInteger(hops) || hops < 1) throw new Error("TRUST_PROXY_HOPS deve ser um inteiro positivo.");
     app.set("trust proxy", hops);
   }
+  const clientOrigins = getClientOrigins();
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-  app.use(cors({ origin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173", credentials: true }));
+  app.use(cors({ origin: clientOrigins, credentials: true }));
   app.use(cookieParser());
   app.use(express.json({ limit: "32kb" }));
   app.use(requireTrustedOrigin);

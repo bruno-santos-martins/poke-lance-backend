@@ -202,7 +202,7 @@ describe("HTTP routes integration", () => {
     expect(response.body.user).toEqual({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
     expect(response.body.token).toBeUndefined();
     expect(response.headers["set-cookie"]?.[0]).toContain("HttpOnly");
-    expect(response.headers["set-cookie"]?.[0]).toContain("SameSite=Strict");
+    expect(response.headers["set-cookie"]?.[0]).toContain("SameSite=Lax");
     expect(response.headers["set-cookie"]?.[0]).toContain("Max-Age=3600");
     expect(routeMocks.userFindUnique).toHaveBeenCalledWith({ where: { email: "bruno@example.com" } });
     const createdUser = routeMocks.userCreate.mock.calls[0][0];
@@ -264,11 +264,12 @@ describe("HTTP routes integration", () => {
     const logoutResponse = await request(app)
       .post("/api/auth/logout")
       .set("Cookie", cookie!)
-      .set("Origin", "http://localhost:5173");
+      .set("Origin", "http://127.0.0.1:5173");
 
     expect(sessionResponse.body.user).toEqual({ id: "bidder-1", name: "Bruno", role: "BIDDER" });
     expect(walletResponse.body).toEqual({ balance: 5000, committed: 0, available: 5000 });
     expect(forbiddenCookieWrite.status).toBe(403);
+    expect(logoutResponse.headers["access-control-allow-origin"]).toBe("http://127.0.0.1:5173");
     expect(routeMocks.depositBalanceExecute).not.toHaveBeenCalled();
     expect(logoutResponse.status).toBe(200);
     expect(logoutResponse.headers["set-cookie"]?.[0]).toContain("auction-session=;");

@@ -1,5 +1,5 @@
-export function isAllowedSocketOrigin(origin: string | undefined, clientOrigin: string): boolean {
-  return origin === undefined || origin === clientOrigin;
+export function isAllowedSocketOrigin(origin: string | undefined, clientOrigins: readonly string[]): boolean {
+  return origin === undefined || clientOrigins.includes(origin);
 }
 
 export function createSocketEventRateLimiter(limit = 60, windowMs = 60_000) {

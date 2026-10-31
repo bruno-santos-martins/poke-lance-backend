@@ -11,17 +11,18 @@ import { PrismaSettlementRepository } from "../adapters/out/database/prisma/Pris
 import { configureApp } from "./configureApp";
 import { AUTH_COOKIE_NAME } from "../adapters/in/http/sessionCookie";
 import { createSocketEventRateLimiter, isAllowedSocketOrigin } from "../adapters/in/websocket/socketGuards";
+import { getClientOrigins } from "../adapters/in/http/clientOrigins";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL não foi configurada.");
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error("Configure JWT_SECRET com pelo menos 32 caracteres.");
 
 const app = express();
 const server = http.createServer(app);
-const clientOrigin = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
+const clientOrigins = getClientOrigins();
 const io = new Server(server, {
-  cors: { origin: clientOrigin, credentials: true },
+  cors: { origin: clientOrigins, credentials: true },
   allowRequest: (request, callback) => {
-    callback(null, isAllowedSocketOrigin(request.headers.origin, clientOrigin));
+    callback(null, isAllowedSocketOrigin(request.headers.origin, clientOrigins));
   }
 });
 const notifier = new SocketAuctionNotifier(io);

@@ -100,27 +100,35 @@ Use essas contas apenas em desenvolvimento. Não execute o seed em produção se
 
 As rotas da aplicação usam o prefixo `/api`. Rotas protegidas recebem o token no cabeçalho `Authorization: Bearer <token>` e exigem o perfil indicado.
 
-| Método | Rota | Acesso | Descrição |
+| Método | Rota | Acesso | Dados de entrada |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | Público | Registra leiloeiro ou licitante. |
-| `POST` | `/api/auth/login` | Público | Autentica o usuário e retorna JWT. |
-| `GET` | `/api/lots` | Público | Lista lotes abertos. |
-| `GET` | `/api/lots/:id` | Público | Consulta detalhes de um lote. |
-| `POST` | `/api/lots` | Leiloeiro | Cria um lote. |
-| `DELETE` | `/api/lots/:id` | Leiloeiro | Cancela o próprio lote e estorna o lance vigente. |
-| `POST` | `/api/lots/:id/bids` | Licitante | Registra um lance. |
-| `GET` | `/api/lots/:id/audit` | Público | Consulta e verifica o histórico encadeado de lances. |
-| `GET` | `/api/pokemon/search?q=...` | Público | Busca Pokémon pela PokéAPI. |
-| `GET` | `/api/pokemon/:id` | Público | Consulta detalhes de um Pokémon. |
-| `GET` | `/api/wallet` | Licitante | Consulta saldo e valores comprometidos. |
-| `POST` | `/api/wallet/deposits` | Licitante | Adiciona saldo para demonstração. |
-| `GET` | `/api/bidder/report` | Licitante | Consulta lances, compras e transações. |
-| `GET` | `/api/seller/reports` | Leiloeiro | Consulta relatório dos lotes vendidos. |
-| `GET` | `/api/seller/audit` | Leiloeiro | Consulta auditoria dos próprios lotes. |
-| `GET` | `/api/seller/auctioned-lots` | Leiloeiro | Lista lotes liquidados e contatos dos ganhadores dos próprios lotes. |
-| `GET` | `/api/receipts/:id` | Público ou autenticado | Consulta comprovativo de lote liquidado. |
+| `POST` | `/api/auth/register` | Público | JSON: `name`, `email`, `password` (mínimo 8 caracteres), `role` (`BIDDER` ou `AUCTIONEER`). Define o cookie da sessão. |
+| `POST` | `/api/auth/login` | Público | JSON: `email`, `password`. Define o cookie; a resposta JSON contém `user`, não o JWT. |
+| `POST` | `/api/auth/logout` | Público | Sem payload obrigatório. Remove o cookie da sessão. |
+| `GET` | `/api/auth/session` | Público (sessão opcional) | Sem payload. Retorna `{ user: null }` sem sessão ou os dados do usuário autenticado. |
+| `GET` | `/api/lots` | Público | Por padrão lista lotes abertos; `?status=all` lista todos os status. |
+| `GET` | `/api/lots/:id` | Público | `id` do lote no caminho. |
+| `POST` | `/api/lots` | Leiloeiro | JSON: `pokemon` (nome ou ID), `startingBid` e `minimumIncrement` em centavos inteiros, `durationMinutes` (1–10080). |
+| `DELETE` | `/api/lots/:id` | Leiloeiro | `id` do lote; só o dono pode cancelar. |
+| `POST` | `/api/lots/:id/bids` | Licitante | JSON: `amount` em centavos inteiros positivos. |
+| `GET` | `/api/lots/:id/audit` | Público | `id` do lote no caminho. |
+| `GET` | `/api/pokemon/search?q=...` | Público | Query `q` (nome ou parte do nome, até 64 caracteres). |
+| `GET` | `/api/pokemon/:id` | Público | ID numérico do Pokémon no caminho. |
+| `GET` | `/api/wallet` | Licitante | Sem payload. |
+| `POST` | `/api/wallet/deposits` | Licitante | JSON: `amount` em centavos (100–1.000.000); depósito de demonstração. |
+| `GET` | `/api/bidder/report` | Licitante | Sem payload. |
+| `GET` | `/api/seller/reports` | Leiloeiro | Sem payload; somente dados do leiloeiro autenticado. |
+| `GET` | `/api/seller/audit` | Leiloeiro | Sem payload; somente dados do leiloeiro autenticado. |
+| `GET` | `/api/seller/auctioned-lots` | Leiloeiro | Sem payload; inclui contato do vencedor dos próprios lotes. |
+| `GET` | `/api/receipts/:id` | Público (sessão opcional) | `id` do lote liquidado; `isCurrentUserWinner` depende de sessão válida. |
 
-O servidor também expõe `/health`. O Socket.IO usa as salas `lot:join` e `lot:leave` e emite eventos de lances e atualização de lotes e carteiras.
+No navegador, o cookie `auction-session` é enviado automaticamente pelo helper compartilhado (`credentials: "include"`); não envie token manualmente. Clientes fora do navegador podem usar `Authorization: Bearer <JWT>`. Rotas protegidas exigem perfil e sessão válidos.
+
+O cadastro público aceita ambos os perfis: qualquer pessoa pode escolher `AUCTIONEER` e receber permissões de leiloeiro. Isso é intencional conforme a regra atual; para um serviço real, restrinja esse perfil a convite ou administração.
+
+Erros esperados: `401` para ausência/invalidade de sessão, `403` para perfil ou origem não autorizados, `409` para conflito de estado, `422` para payload inválido e `429` ao exceder os limites. O servidor também expõe `GET /health`.
+
+O Socket.IO usa `lot:join` e `lot:leave` para salas públicas de lote. A conexão pode ser anônima; quando há sessão, autentica pelo cookie. Atualizações privadas de carteira usam salas de usuário autenticado.
 
 ## Regras, persistência e auditoria
 
@@ -218,7 +226,7 @@ O PostgreSQL é publicado somente no loopback (`127.0.0.1`) e usa `POSTGRES_PASS
 ## Hardening de produção
 
 - Login: limite geral de 300 requisições por IP a cada 15 minutos, limite de 30 tentativas de login por IP e 8 por combinação de IP/conta; cadastros limitados a 10 por hora. As respostas de limite incluem headers padronizados. Os contadores padrão são em memória por processo: para múltiplas réplicas, configure um store compartilhado antes do deploy.
-- Sessões: JWT HS256 com issuer fixo e validade de 1 hora, entregue apenas em cookie `HttpOnly`, `SameSite=Strict`, `Secure` em produção. O cliente envia cookies com credenciais e chamadas mutáveis autenticadas por cookie exigem `Origin` igual a `CLIENT_ORIGIN`.
+- Sessões: JWT HS256 com issuer fixo e validade de 1 hora, entregue apenas em cookie `HttpOnly`; em produção usa `SameSite=None; Secure` para permitir frontend e API em domínios diferentes, e no desenvolvimento usa `SameSite=Lax`. Chamadas mutáveis autenticadas por cookie exigem uma origem autorizada; em produção, somente `CLIENT_ORIGIN` é permitido.
 - HTTP: Helmet aplica headers de segurança; CORS permite apenas `CLIENT_ORIGIN` com credenciais. Termine TLS no ingress/reverse proxy e configure `TRUST_PROXY_HOPS` com o número exato de proxies confiáveis (não use confiança irrestrita).
 - Segredos e banco: use secret manager para `JWT_SECRET`, `POSTGRES_PASSWORD` e `DATABASE_URL`; não publique a porta PostgreSQL em produção. Rotacione credenciais que tenham sido usadas fora do ambiente local.
 - Monitoramento: registre e alerte sobre respostas 429, sequências de falhas de login, erros 401/403 e falhas do banco, sem registrar senhas, cookies, tokens ou payloads sensíveis.
