@@ -30,5 +30,5 @@ export const bidSchema = z.object({
 });
 
 export const depositSchema = z.object({
-  amount: z.number().int().min(100).max(MAX_CENTAVOS)
+  amount: z.number().int().min(1).max(MAX_CENTAVOS)
 });
