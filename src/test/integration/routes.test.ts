@@ -203,7 +203,7 @@ describe("HTTP routes integration", () => {
     expect(response.body.token).toBeUndefined();
     expect(response.headers["set-cookie"]?.[0]).toContain("HttpOnly");
     expect(response.headers["set-cookie"]?.[0]).toContain("SameSite=Lax");
-    expect(response.headers["set-cookie"]?.[0]).toContain("Max-Age=3600");
+    expect(response.headers["set-cookie"]?.[0]).toContain("Max-Age=43200");
     expect(routeMocks.userFindUnique).toHaveBeenCalledWith({ where: { email: "bruno@example.com" } });
     const createdUser = routeMocks.userCreate.mock.calls[0][0];
     expect(createdUser.data.wallet).toEqual({ create: {} });
