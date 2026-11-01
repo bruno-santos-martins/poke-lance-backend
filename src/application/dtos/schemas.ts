@@ -12,10 +12,12 @@ export const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+const MAX_CENTAVOS = 9_999_999_999;
+
 export const createLotSchema = z.object({
   pokemon: z.string().trim().min(1).max(64),
-  startingBid: z.number().int().positive(),
-  minimumIncrement: z.number().int().positive().default(100),
+  startingBid: z.number().int().positive().max(MAX_CENTAVOS),
+  minimumIncrement: z.number().int().positive().max(MAX_CENTAVOS).default(100),
   durationMinutes: z.number().int().min(1).max(10080).default(60)
 });
 
@@ -24,9 +26,9 @@ export const pokemonSearchSchema = z.object({
 });
 
 export const bidSchema = z.object({
-  amount: z.number().int().positive()
+  amount: z.number().int().positive().max(MAX_CENTAVOS)
 });
 
 export const depositSchema = z.object({
-  amount: z.number().int().min(100).max(1_000_000)
+  amount: z.number().int().min(100).max(MAX_CENTAVOS)
 });

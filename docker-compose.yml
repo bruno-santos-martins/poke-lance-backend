@@ -52,6 +52,7 @@ services:
       PORT: 4000
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:5173}
       UPLOADS_DIR: ./uploads
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
       - "4000:4000"
     volumes:
