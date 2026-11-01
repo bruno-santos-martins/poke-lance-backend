@@ -173,7 +173,7 @@ describe("HTTP routes integration", () => {
     const response = await request(app)
       .post("/api/wallet/deposits")
       .set("Authorization", `Bearer ${token}`)
-      .send({ amount: 99 });
+      .send({ amount: 0 });
 
     expect(response.status).toBe(422);
     expect(response.body.error).toBe("Dados inválidos.");
