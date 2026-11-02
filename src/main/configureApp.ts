@@ -51,4 +51,11 @@ export function configureApp(app: Express, notifier: IAuctionNotifier): void {
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
   app.use("/api", buildRouter(notifier));
   app.use(errors);
+
+  // In production the frontend is built into ./public — serve it as a SPA.
+  if (process.env.NODE_ENV === "production") {
+    const publicDir = path.resolve("./public");
+    app.use(express.static(publicDir, { index: "index.html" }));
+    app.get("*", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
+  }
 }
