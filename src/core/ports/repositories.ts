@@ -110,6 +110,7 @@ export interface ILotListingRepository {
 
 export interface ISettlementRepository {
   settleExpired(): Promise<SettlementResult[]>;
+  settleLotNow(lotId: string, sellerId: string): Promise<SettlementResult>;
 }
 export interface ISellerAuditRepository {
   getForSeller(sellerId: string): Promise<AuditEntry[]>;

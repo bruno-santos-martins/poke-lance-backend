@@ -88,6 +88,41 @@ export class PrismaSettlementRepository implements ISettlementRepository {
     `;
   }
 
+  async settleLotNow(lotId: string, sellerId: string): Promise<SettlementResult> {
+    return prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Lot" WHERE "id" = ${lotId} FOR UPDATE`;
+        const lot = await tx.lot.findUnique({ where: { id: lotId } });
+        if (!lot) throw new Error("Lote não encontrado.");
+        if (lot.status !== "OPEN") throw new Error("O lote já foi encerrado.");
+        if (lot.sellerId !== sellerId) throw new Error("Não tens permissão para finalizar este lote.");
+
+        const winningBid = await this.findWinningBid(tx, lotId);
+        const settledWallets = winningBid
+          ? await this.settleWinningBid(tx, lot, winningBid)
+          : null;
+        const settlementTime = new Date();
+
+        const settledLot = await tx.lot.update({
+          where: { id: lotId },
+          data: { status: "CLOSED", winnerId: winningBid?.bidderId ?? null, settledAt: settlementTime }
+        });
+        await recordAudit(tx, {
+          actorId: sellerId,
+          actorRole: "AUCTIONEER",
+          action: "LOT_SETTLED",
+          entityType: "LOT",
+          entityId: lotId,
+          lotId,
+          details: { title: lot.title, winnerId: winningBid?.bidderId ?? null, amount: winningBid?.amount ?? 0 }
+        });
+
+        return this.createSettlementResult(settledLot, winningBid, settledWallets);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
+  }
+
   private async findLotIfStillExpired(
     transactionClient: Prisma.TransactionClient,
     lotId: string

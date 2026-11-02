@@ -20,7 +20,9 @@ export function buildRouter(notifier: IAuctionNotifier): Router {
   router.get("/lots/:id", controllers.getLot);
   router.post("/lots", authenticate, requireRole("AUCTIONEER"), controllers.createLot);
   router.delete("/lots/:id", authenticate, requireRole("AUCTIONEER"), controllers.cancelLot);
+  router.post("/lots/:id/finalize", authenticate, requireRole("AUCTIONEER"), controllers.finalizeLot);
 
+  router.get("/seller/wallet", authenticate, requireRole("AUCTIONEER"), controllers.sellerWallet);
   router.get("/seller/reports", authenticate, requireRole("AUCTIONEER"), controllers.sellerReport);
   router.get("/seller/audit", authenticate, requireRole("AUCTIONEER"), controllers.sellerAudit);
   router.get("/seller/auctioned-lots", authenticate, requireRole("AUCTIONEER"), controllers.sellerAuctionedLots);

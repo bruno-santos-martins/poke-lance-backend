@@ -20,6 +20,8 @@ import { PrismaBidderReportRepository } from "../adapters/out/database/prisma/Pr
 import { PrismaSellerAuditRepository } from "../adapters/out/database/prisma/PrismaSellerAuditRepository";
 import { GetSellerAuditUseCase } from "../application/use-cases/audit/GetSellerAuditUseCase";
 import { GetPokemonDetailsUseCase } from "../application/use-cases/lot/GetPokemonDetailsUseCase";
+import { FinalizeLotUseCase } from "../application/use-cases/lot/FinalizeLotUseCase";
+import { PrismaSettlementRepository } from "../adapters/out/database/prisma/PrismaSettlementRepository";
 
 export function createContainer(notifier: IAuctionNotifier) {
   const hashService = new Sha256HashService();
@@ -38,6 +40,7 @@ export function createContainer(notifier: IAuctionNotifier) {
     getWallet: new GetWalletUseCase(walletRepository),
     depositBalance: new DepositBalanceUseCase(walletRepository),
     bidderReport: new GetBidderReportUseCase(new PrismaBidderReportRepository()),
-    sellerAudit: new GetSellerAuditUseCase(new PrismaSellerAuditRepository())
+    sellerAudit: new GetSellerAuditUseCase(new PrismaSellerAuditRepository()),
+    finalizeLot: new FinalizeLotUseCase(new PrismaSettlementRepository(), notifier)
   };
 }

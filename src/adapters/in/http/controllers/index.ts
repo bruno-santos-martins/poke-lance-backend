@@ -137,6 +137,18 @@ export function createControllers(notifier: IAuctionNotifier) {
       res.json({ lot: result.lot, refundedAmount: result.refundedAmount });
     }),
 
+    finalizeLot: asyncRoute(async (req, res) => {
+      const result = await container.finalizeLot.execute(routeId(req), req.user!.id);
+      res.json({ id: result.id, settledAt: result.settledAt, winnerId: result.winnerId });
+    }),
+
+    sellerWallet: asyncRoute(async (req, res) => {
+      const wallet = await prisma.wallet.findUnique({ where: { userId: req.user!.id } });
+      res.json(wallet
+        ? { balance: wallet.balance, committed: 0, available: wallet.balance }
+        : { balance: 0, committed: 0, available: 0 });
+    }),
+
     sellerReport: asyncRoute(async (req, res) => {
       const lots = await prisma.lot.findMany({
         where: { sellerId: req.user!.id, status: "CLOSED" },

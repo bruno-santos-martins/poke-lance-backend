@@ -12,7 +12,7 @@ export const loginSchema = z.object({
   password: z.string().min(1)
 });
 
-const MAX_CENTAVOS = 9_999_999_999;
+const MAX_CENTAVOS = 2_147_483_647; // INT4 max — limite do campo no banco
 
 export const createLotSchema = z.object({
   pokemon: z.string().trim().min(1).max(64),
