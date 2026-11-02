@@ -8,19 +8,22 @@ export const isSecureCookie =
   cookieSecureEnv === "true" ||
   (cookieSecureEnv !== "false" && trustProxyHops >= 1);
 
-// SameSite=lax is sufficient because frontend and backend share the same origin in production.
-// SameSite=none + Secure is only required for cross-origin cookies, which this setup avoids.
+// SameSite=none is required when frontend and backend are on different origins (cross-origin cookies).
+// SameSite=none requires Secure=true — browsers reject it over plain HTTP.
+// In development (no proxy, plain HTTP) we fall back to "lax" so the cookie still works locally.
+const sameSite = isSecureCookie ? ("none" as const) : ("lax" as const);
+
 export const AUTH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: isSecureCookie,
-  sameSite: "lax" as const,
+  sameSite,
   path: "/",
-  maxAge: 12 * 60 * 60 * 1000
+  maxAge: 24 * 60 * 60 * 1000
 };
 
 export const CLEAR_AUTH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: isSecureCookie,
-  sameSite: "lax" as const,
+  sameSite,
   path: "/"
 };
