@@ -56,6 +56,6 @@ export function configureApp(app: Express, notifier: IAuctionNotifier): void {
   if (process.env.NODE_ENV === "production") {
     const publicDir = path.resolve("./public");
     app.use(express.static(publicDir, { index: "index.html" }));
-    app.get("*", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
+    app.use((_req, res) => res.sendFile(path.join(publicDir, "index.html")));
   }
 }
