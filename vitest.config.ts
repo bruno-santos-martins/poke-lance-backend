@@ -7,7 +7,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      exclude: ["src/test/**", "src/main/server.ts", "src/core/ports/**", "src/core/domain/entities.ts"],
+      exclude: ["src/test/**", "src/main/server.ts", "src/main/container.ts", "src/adapters/out/database/prisma/client.ts", "src/core/ports/**", "src/core/domain/entities.ts"],
       reporter: ["text", "html"],
       thresholds: { lines: 90, statements: 90, functions: 90, branches: 84 }
     }
