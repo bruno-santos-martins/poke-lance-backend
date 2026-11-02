@@ -3,6 +3,10 @@ import type { ISettlementRepository, SettlementResult } from "../../../core/port
 import type { IAuctionNotifier } from "../../../core/ports/services";
 import { SettleExpiredLots } from "../../../application/use-cases/auction/SettleExpiredLots";
 
+function makeRepo(settleExpired: ISettlementRepository["settleExpired"]): ISettlementRepository {
+  return { settleExpired, settleLotNow: vi.fn() };
+}
+
 describe("SettleExpiredLots", () => {
   it("does not publish updates when there are no expired lots", async () => {
     const settleExpired = vi.fn<ISettlementRepository["settleExpired"]>().mockResolvedValue([]);
@@ -11,7 +15,7 @@ describe("SettleExpiredLots", () => {
       lotUpdated: vi.fn(),
       walletUpdated: vi.fn()
     };
-    const useCase = new SettleExpiredLots({ settleExpired }, notifier);
+    const useCase = new SettleExpiredLots(makeRepo(settleExpired), notifier);
 
     await useCase.execute();
 
@@ -36,7 +40,7 @@ describe("SettleExpiredLots", () => {
       lotUpdated: vi.fn(),
       walletUpdated: vi.fn()
     };
-    const useCase = new SettleExpiredLots({ settleExpired }, notifier);
+    const useCase = new SettleExpiredLots(makeRepo(settleExpired), notifier);
 
     await useCase.execute();
 
@@ -68,7 +72,7 @@ describe("SettleExpiredLots", () => {
       lotUpdated: vi.fn(),
       walletUpdated: vi.fn()
     };
-    const useCase = new SettleExpiredLots({ settleExpired }, notifier);
+    const useCase = new SettleExpiredLots(makeRepo(settleExpired), notifier);
 
     await useCase.execute();
 
@@ -94,7 +98,7 @@ describe("SettleExpiredLots", () => {
       lotUpdated: vi.fn(),
       walletUpdated: vi.fn()
     };
-    const useCase = new SettleExpiredLots({ settleExpired }, notifier);
+    const useCase = new SettleExpiredLots(makeRepo(settleExpired), notifier);
 
     await useCase.execute();
 
@@ -109,7 +113,7 @@ describe("SettleExpiredLots", () => {
       lotUpdated: vi.fn(),
       walletUpdated: vi.fn()
     };
-    const useCase = new SettleExpiredLots({ settleExpired }, notifier);
+    const useCase = new SettleExpiredLots(makeRepo(settleExpired), notifier);
 
     await expect(useCase.execute()).rejects.toThrow("Falha de liquidação");
     expect(notifier.lotUpdated).not.toHaveBeenCalled();
