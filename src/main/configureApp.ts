@@ -1,13 +1,11 @@
 import { ErrorRequestHandler, Express } from "express";
 import cors from "cors";
-import cookieParser from "cookie-parser";
 import express from "express";
 import helmet from "helmet";
 import path from "node:path";
 import { ZodError } from "zod";
 import { AppError } from "../core/domain/errors";
 import { IAuctionNotifier } from "../core/ports/services";
-import { requireTrustedOrigin } from "../adapters/in/http/middlewares/requireTrustedOrigin";
 import { buildRouter } from "../adapters/in/http/routes";
 import { getClientOrigins } from "../adapters/in/http/clientOrigins";
 
@@ -37,10 +35,8 @@ export function configureApp(app: Express, notifier: IAuctionNotifier): void {
   }
   const clientOrigins = getClientOrigins();
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-  app.use(cors({ origin: clientOrigins, credentials: true }));
-  app.use(cookieParser());
+  app.use(cors({ origin: clientOrigins, credentials: true, allowedHeaders: ["Content-Type", "Authorization"] }));
   app.use(express.json({ limit: "32kb" }));
-  app.use(requireTrustedOrigin);
   app.use(
     "/uploads",
     express.static(path.resolve(process.env.UPLOADS_DIR ?? "./uploads"), {

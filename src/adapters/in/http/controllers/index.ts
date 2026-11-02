@@ -7,7 +7,6 @@ import { createContainer } from "../../../../main/container";
 import { JwtTokenService } from "../../../out/crypto/JwtTokenService";
 import { prisma } from "../../../out/database/prisma/client";
 import { recordAudit } from "../../../out/database/prisma/PrismaAuditWriter";
-import { AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS, CLEAR_AUTH_COOKIE_OPTIONS } from "../sessionCookie";
 
 const tokens = new JwtTokenService();
 
@@ -56,8 +55,8 @@ export function createControllers(notifier: IAuctionNotifier) {
         });
         return createdUser;
       });
-      res.cookie(AUTH_COOKIE_NAME, tokens.sign({ sub: user.id, role: user.role }), AUTH_COOKIE_OPTIONS);
-      res.status(201).json({ user: { id: user.id, name: user.name, role: user.role } });
+      const token = tokens.sign({ sub: user.id, role: user.role });
+      res.status(201).json({ user: { id: user.id, name: user.name, role: user.role }, token });
     }),
 
     login: asyncRoute(async (req, res) => {
@@ -73,12 +72,11 @@ export function createControllers(notifier: IAuctionNotifier) {
         entityId: user.id,
         details: {}
       }));
-      res.cookie(AUTH_COOKIE_NAME, tokens.sign({ sub: user.id, role: user.role }), AUTH_COOKIE_OPTIONS);
-      res.json({ user: { id: user.id, name: user.name, role: user.role } });
+      const token = tokens.sign({ sub: user.id, role: user.role });
+      res.json({ user: { id: user.id, name: user.name, role: user.role }, token });
     }),
 
     logout: asyncRoute(async (_req, res) => {
-      res.clearCookie(AUTH_COOKIE_NAME, CLEAR_AUTH_COOKIE_OPTIONS);
       res.json({ success: true });
     }),
 

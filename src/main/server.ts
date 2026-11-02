@@ -2,14 +2,12 @@ import "dotenv/config";
 import express from "express";
 import http from "node:http";
 import { Server } from "socket.io";
-import { parse as parseCookies } from "cookie";
 import { SocketAuctionNotifier } from "../adapters/in/websocket/SocketAuctionNotifier";
 import { SettleExpiredLots } from "../application/use-cases/auction/SettleExpiredLots";
 import { prisma } from "../adapters/out/database/prisma/client";
 import { JwtTokenService } from "../adapters/out/crypto/JwtTokenService";
 import { PrismaSettlementRepository } from "../adapters/out/database/prisma/PrismaSettlementRepository";
 import { configureApp } from "./configureApp";
-import { AUTH_COOKIE_NAME } from "../adapters/in/http/sessionCookie";
 import { createSocketEventRateLimiter, isAllowedSocketOrigin } from "../adapters/in/websocket/socketGuards";
 import { getClientOrigins } from "../adapters/in/http/clientOrigins";
 
@@ -31,10 +29,8 @@ const settlementUseCase = new SettleExpiredLots(new PrismaSettlementRepository()
 
 configureApp(app, notifier);
 io.use((socket, next) => {
-  const authToken = socket.handshake.auth?.token;
-  const cookieToken = parseCookies(socket.request.headers.cookie ?? "")[AUTH_COOKIE_NAME];
-  const token = typeof authToken === "string" ? authToken : cookieToken;
-  if (!token) return next();
+  const token = socket.handshake.auth?.token;
+  if (typeof token !== "string" || !token) return next();
   try {
     socket.data.userId = tokens.verify(token).sub;
     next();
