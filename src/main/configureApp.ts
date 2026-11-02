@@ -35,7 +35,7 @@ export function configureApp(app: Express, notifier: IAuctionNotifier): void {
   }
   const clientOrigins = getClientOrigins();
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-  app.use(cors({ origin: clientOrigins, credentials: true, allowedHeaders: ["Content-Type", "Authorization"] }));
+  app.use(cors({ origin: clientOrigins, allowedHeaders: ["Content-Type", "Authorization"] }));
   app.use(express.json({ limit: "32kb" }));
   app.use(
     "/uploads",

@@ -65,6 +65,17 @@ Os comandos desta seção são executados a partir da pasta `backend`.
 
 A API fica disponível em `http://localhost:4000`. O endpoint `GET /health` verifica se o servidor está respondendo.
 
+## Acesso ao ambiente de produção
+
+O frontend está disponível em: **https://poke-lance-front.onrender.com/**
+
+Contas de demonstração para avaliação:
+
+| Perfil | E-mail | Senha |
+|---|---|---|
+| Leiloeiro | `leiloeiro@leiloeiro.com` | `12345678` |
+| Licitante | `licitante@licitante.com` | `12345678` |
+
 ## Dados de demonstração
 
 O comando `npm run db:seed` cria contas locais para avaliação. Todas usam a senha `Senha123!`:

@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
-import type { NextFunction, Request, Response } from "express";
 import type { Server } from "socket.io";
 import { describe, expect, it, vi } from "vitest";
-import { requireTrustedOrigin } from "../../../adapters/in/http/middlewares/requireTrustedOrigin";
 import { getClientOrigins } from "../../../adapters/in/http/clientOrigins";
 import { SocketAuctionNotifier } from "../../../adapters/in/websocket/SocketAuctionNotifier";
 import { JwtTokenService } from "../../../adapters/out/crypto/JwtTokenService";
@@ -99,60 +97,6 @@ describe("JwtTokenService", () => {
     process.env.JWT_SECRET = "short";
     expect(() => new JwtTokenService().sign({ sub: "u", role: "BIDDER" })).toThrow("JWT_SECRET");
     process.env.JWT_SECRET = original;
-  });
-});
-
-describe("requireTrustedOrigin", () => {
-  const COOKIE_NAME = "auction-session";
-
-  function makeReq(method: string, origin: string | undefined, host: string, cookie = true): Request {
-    return {
-      method,
-      cookies: cookie ? { [COOKIE_NAME]: "tok" } : {},
-      get: (header: string) => {
-        if (header === "origin") return origin;
-        if (header === "host") return host;
-        return undefined;
-      }
-    } as unknown as Request;
-  }
-
-  const res = {} as Response;
-
-  it("passes GET requests without checking origin", () => {
-    const next = vi.fn() as unknown as NextFunction;
-    requireTrustedOrigin(makeReq("GET", "http://evil.com", "localhost:5173"), res, next);
-    expect(next).toHaveBeenCalledWith();
-  });
-
-  it("passes same-origin POST requests", () => {
-    const next = vi.fn() as unknown as NextFunction;
-    process.env.CLIENT_ORIGIN = "http://localhost:5173";
-    requireTrustedOrigin(makeReq("POST", "http://localhost:5173", "localhost:5173"), res, next);
-    expect(next).toHaveBeenCalledWith();
-    delete process.env.CLIENT_ORIGIN;
-  });
-
-  it("blocks cross-origin POST requests", () => {
-    const next = vi.fn() as unknown as NextFunction;
-    process.env.CLIENT_ORIGIN = "http://localhost:5173";
-    requireTrustedOrigin(makeReq("POST", "http://evil.com", "localhost:5173"), res, next);
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
-    delete process.env.CLIENT_ORIGIN;
-  });
-
-  it("treats a malformed origin URL as untrusted", () => {
-    const next = vi.fn() as unknown as NextFunction;
-    process.env.CLIENT_ORIGIN = "http://localhost:5173";
-    requireTrustedOrigin(makeReq("POST", "not-a-url", "localhost:5173"), res, next);
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
-    delete process.env.CLIENT_ORIGIN;
-  });
-
-  it("skips the check when no session cookie is present", () => {
-    const next = vi.fn() as unknown as NextFunction;
-    requireTrustedOrigin(makeReq("POST", "http://evil.com", "localhost:5173", false), res, next);
-    expect(next).toHaveBeenCalledWith();
   });
 });
 

@@ -93,7 +93,6 @@ describe("HTTP routes integration", () => {
     expect(response.headers["x-content-type-options"]).toBe("nosniff");
     expect(response.headers["x-frame-options"]).toBe("SAMEORIGIN");
     expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
-    expect(response.headers["access-control-allow-credentials"]).toBe("true");
   });
 
   it("lists open lots through the public route", async () => {
